@@ -31,22 +31,25 @@ run(
 );
 
 // Step 2 — push schema to database (creates all tables if they don't exist)
-// This is safe to run on every deploy — it's a no-op if schema is already in sync.
 if (process.env.DATABASE_URL) {
-  run(
-    'prisma db push',
-    node,
-    [
-      path.join(root, 'node_modules', 'prisma', 'build', 'index.js'),
-      'db', 'push',
-      '--schema', path.join(root, 'server', 'prisma', 'schema.prisma'),
-      '--accept-data-loss',
-      '--skip-generate',
-    ],
-    root
-  );
+  try {
+    run(
+      'prisma db push',
+      node,
+      [
+        path.join(root, 'node_modules', 'prisma', 'build', 'index.js'),
+        'db', 'push',
+        '--schema', path.join(root, 'server', 'prisma', 'schema.prisma'),
+        '--accept-data-loss',
+        '--skip-generate',
+      ],
+      root
+    );
+  } catch (e) {
+    console.warn('prisma db push warning:', e.message);
+  }
 } else {
-  console.log('\n⚠ DATABASE_URL not set — skipping prisma db push (set it in Vercel env vars)');
+  console.log('\n⚠ DATABASE_URL not set — skipping prisma db push');
 }
 
 // Step 3 — Vite build (runs from client/ dir so vite.config.ts resolves correctly)
