@@ -113,6 +113,11 @@ export const useModuleStore = create<ModuleState>((set, get) => ({
       body: formData,
     });
 
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return { valid: false, error: `Server error (${res.status}). Please try again.` };
+    }
+
     const data = await res.json();
     return data;
   },
@@ -123,6 +128,11 @@ export const useModuleStore = create<ModuleState>((set, get) => ({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ repoUrl }),
     });
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return { valid: false, error: `Server error (${res.status}). Please try again.` };
+    }
 
     const data = await res.json();
     return data;
