@@ -49,9 +49,19 @@ export class GitService {
   private reposRoot: string;
 
   constructor() {
-    this.reposRoot = path.join(__dirname, '..', '..', 'uploads', 'repos');
-    if (!fs.existsSync(this.reposRoot)) {
-      fs.mkdirSync(this.reposRoot, { recursive: true });
+    // On Vercel the filesystem outside /tmp is read-only.
+    // Use /tmp/repos in production so mkdirSync doesn't throw EROFS.
+    const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+    this.reposRoot = isVercel
+      ? path.join('/tmp', 'repos')
+      : path.join(__dirname, '..', '..', 'uploads', 'repos');
+    try {
+      if (!fs.existsSync(this.reposRoot)) {
+        fs.mkdirSync(this.reposRoot, { recursive: true });
+      }
+    } catch (e) {
+      // Non-fatal: if we can't create the dir, individual operations will fail gracefully
+      console.warn('[GitService] Could not create reposRoot:', this.reposRoot);
     }
   }
 

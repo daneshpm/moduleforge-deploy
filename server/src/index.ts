@@ -6,8 +6,6 @@ import { modulesRouter } from './routes/modules';
 import { projectsRouter } from './routes/projects';
 import { categoriesRouter } from './routes/categories';
 import { webhooksRouter } from './routes/webhooks';
-import { runnerRouter } from './routes/runner';
-import gitRouter from './routes/git';
 
 dotenv.config();
 
@@ -67,8 +65,31 @@ app.use('/api/projects', projectsRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/webhooks', webhooksRouter);
 app.use('/api/github/webhook', webhooksRouter);
-app.use('/api/runner', runnerRouter);
-app.use('/api/git', gitRouter);
+
+// ── Local-only routes (not supported on Vercel serverless) ────────────────────
+// These features require a persistent filesystem and long-running processes,
+// neither of which are available in a serverless environment.
+if (isDev) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { runnerRouter } = require('./routes/runner');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const gitRouter = require('./routes/git').default;
+  app.use('/api/runner', runnerRouter);
+  app.use('/api/git', gitRouter);
+} else {
+  app.use('/api/runner', (_req: any, res: any) => {
+    res.status(503).json({
+      error: 'Not available in production',
+      message: 'The module runner requires a local server. Run the app locally to use this feature.',
+    });
+  });
+  app.use('/api/git', (_req: any, res: any) => {
+    res.status(503).json({
+      error: 'Not available in production',
+      message: 'Local git operations require a persistent filesystem. Run the app locally to use this feature.',
+    });
+  });
+}
 
 // ── 404 fallback for unknown API routes ──────────────────────────────────────
 app.use('/api/*', (_req, res) => {
