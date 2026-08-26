@@ -1,0 +1,32 @@
+# Node dependencies
+node_modules/
+npm-debug.log*
+
+# Build outputs
+client/dist/
+server/dist/
+.vercel/
+
+# Database files
+server/dev.db
+server/dev.db-journal
+server/prisma/dev.db
+server/prisma/dev.db-journal
+
+# Uploads & Storage
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Environment files
+.env
+client/.env
+server/.env
+*.env.local
+
+# IDE & System
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.vercel
+.env*

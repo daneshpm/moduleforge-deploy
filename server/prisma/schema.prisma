@@ -1,0 +1,245 @@
+// Prisma Schema for ModuleForge Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(uuid())
+  email          String          @unique
+  name           String?
+  avatarUrl      String?
+  isDev          Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  modules        Module[]        @relation("UserModules")
+  projects       Project[]       @relation("UserProjects")
+  projectMembers ProjectMember[]
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  icon        String?
+  modules     Module[]
+}
+
+model Module {
+  id                  String          @id @default(uuid())
+  slug                String          @unique
+  name                String
+  description         String
+  author              String
+  categoryName        String
+  category            Category        @relation(fields: [categoryName], references: [name])
+  version             String          @default("1.0.0")
+  technologies        String?         @default("[]") // JSON array string of technologies (e.g. ["React","Node.js"])
+  sourceType          String          // "upload" | "github" | "moduleforge"
+  repositoryType      String?         @default("upload") // "moduleforge" | "github" | "upload"
+  repositoryUrl       String?
+  repositoryPath      String?
+  defaultBranch       String?         @default("main")
+  githubUrl           String?
+  githubOwner         String?
+  githubRepo          String?
+  githubBranch        String?         @default("main")
+  githubCurrentCommit String?
+  githubLatestCommit  String?
+  githubLastSyncedAt  DateTime?
+  githubSyncStatus    String?         @default("synced") // "synced" | "update_available" | "sync_failed" | "not_connected"
+  githubWebhookId     String?
+  // Module Runtime Configuration fields
+  frontendCommand     String?         @default("npm run dev")
+  backendCommand      String?         @default("")
+  frontendPort        Int?            @default(5173)
+  backendPort         Int?            @default(5000)
+  frontendUrl         String?         @default("http://localhost:5173")
+  backendUrl          String?         @default("http://localhost:5000")
+  workingDir          String?         @default(".")
+  envVars             String?         @default("[]") // JSON string array of required env var names
+  zipStoragePath      String?
+  moduleJson          String?         // Optional JSON string if module.json is present
+  downloads           Int             @default(0)
+  isPublished         Boolean         @default(true)
+  authorId            String?
+  authorUser          User?           @relation("UserModules", fields: [authorId], references: [id])
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  versions            ModuleVersion[]
+  projectModules      ProjectModule[]
+  syncLogs            ModuleSync[]
+
+  @@index([slug])
+  @@index([categoryName])
+  @@index([author])
+}
+
+model ModuleSync {
+  id            String   @id @default(uuid())
+  moduleId      String
+  module        Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  commitSha     String
+  commitMessage String?
+  author        String?
+  status        String   @default("synced") // "synced" | "failed"
+  syncedAt      DateTime @default(now())
+
+  @@index([moduleId])
+  @@index([syncedAt])
+}
+
+model ModuleVersion {
+  id             String   @id @default(uuid())
+  moduleId       String
+  module         Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  version        String
+  moduleJson     String?
+  zipStoragePath String?
+  changelog      String?
+  createdAt      DateTime @default(now())
+
+  @@unique([moduleId, version])
+  @@index([moduleId])
+}
+
+model Project {
+  id               String            @id @default(uuid())
+  name             String
+  description      String?
+  userId           String?
+  user             User?             @relation("UserProjects", fields: [userId], references: [id])
+  projectType      String            @default("individual") // "individual" | "team"
+  visibility       String            @default("private")    // "private" | "public"
+  canvasConfig     String?           // JSON string of canvas state (zoom, pan, etc)
+  gitRepositoryUrl String?
+  gitOwner         String?
+  gitRepo          String?
+  gitBranch        String?           @default("main")
+  currentCommitSha String?
+  lastSyncedAt     DateTime?
+  syncStatus       String?           @default("synced") // "synced" | "updating" | "failed"
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  modules          ProjectModule[]
+  members          ProjectMember[]
+  activities       ProjectActivity[]
+  exports          GeneratedExport[]
+
+  @@index([userId])
+}
+
+model ProjectMember {
+  id          String    @id @default(uuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id])
+  email       String
+  role        String    @default("developer") // "owner" | "developer" | "viewer"
+  status      String    @default("pending")   // "pending" | "accepted"
+  inviteToken String?   @unique
+  invitedAt   DateTime  @default(now())
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([projectId])
+  @@index([email])
+  @@index([inviteToken])
+}
+
+model ProjectModule {
+  id               String             @id @default(uuid())
+  projectId        String
+  project          Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  moduleId         String
+  module           Module             @relation(fields: [moduleId], references: [id])
+  moduleVersion    String
+  xPosition        Float              @default(0)
+  yPosition        Float              @default(0)
+  configuration    String?            // JSON configuration string
+  ownerName        String?            // Assigned developer name (e.g. "Shalya")
+  ownerEmail       String?
+  repositoryType   String?            @default("moduleforge") // "moduleforge" | "github" | "upload"
+  repositoryPath   String?
+  currentBranch    String?            @default("main")
+  gitStatus        String?            @default("up_to_date") // "up_to_date" | "changes_available" | "local_changes" | "conflict"
+  githubRepository String?            // e.g. "company/crm"
+  githubBranch     String?            @default("main")
+  currentCommitSha String?
+  lastCommitMessage String?
+  lastCommitAuthor String?
+  lastSyncedAt     DateTime?
+  deploymentUrl    String?
+  deploymentStatus String?            @default("synced") // "synced" | "updating" | "failed"
+  createdAt        DateTime           @default(now())
+  deployments      ModuleDeployment[]
+  commits          ModuleCommit[]
+
+  @@index([projectId])
+  @@index([moduleId])
+}
+
+model ModuleCommit {
+  id              String         @id @default(uuid())
+  moduleId        String
+  projectModuleId String?
+  projectModule   ProjectModule? @relation(fields: [projectModuleId], references: [id], onDelete: Cascade)
+  commitSha       String
+  message         String
+  author          String
+  branch          String         @default("main")
+  changedFiles    String?        @default("[]") // JSON string array
+  createdAt       DateTime       @default(now())
+
+  @@index([moduleId])
+  @@index([projectModuleId])
+  @@index([createdAt])
+}
+
+model ModuleDeployment {
+  id              String        @id @default(uuid())
+  projectModuleId String
+  projectModule   ProjectModule @relation(fields: [projectModuleId], references: [id], onDelete: Cascade)
+  commitSha       String
+  commitMessage   String?
+  author          String?
+  deploymentUrl   String?
+  status          String        @default("success") // "success" | "failed" | "building"
+  buildLogs       String?
+  createdAt       DateTime      @default(now())
+
+  @@index([projectModuleId])
+  @@index([createdAt])
+}
+
+model ProjectActivity {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  moduleName  String?
+  action      String   // e.g. "updated", "deployed", "build_failed", "member_invited", "committed", "pushed", "pulled"
+  actorName   String?
+  description String
+  commitSha   String?
+  status      String   @default("synced") // "synced" | "updating" | "failed"
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@index([createdAt])
+}
+
+model GeneratedExport {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  zipFileName String
+  zipPath     String
+  createdAt   DateTime @default(now())
+}
