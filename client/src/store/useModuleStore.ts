@@ -255,8 +255,17 @@ export const useModuleStore = create<ModuleState>((set, get) => ({
 
   registerWebhook: async (id: string) => {
     try {
+      // Use user-configured token from settings if available
+      const userToken = localStorage.getItem('moduleforge_github_token');
+      const userSecret = localStorage.getItem('moduleforge_github_webhook_secret');
+      const body: any = {};
+      if (userToken) body.githubToken = userToken;
+      if (userSecret) body.webhookSecret = userSecret;
+
       const res = await fetch(`${API_BASE}/modules/${id}/register-webhook`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) return { success: false, error: data.error || 'Failed to register webhook' };

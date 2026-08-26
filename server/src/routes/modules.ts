@@ -768,6 +768,10 @@ modulesRouter.get('/:id/webhook-status', async (req, res) => {
 modulesRouter.post('/:id/register-webhook', async (req, res) => {
   try {
     const { id } = req.params;
+    // Allow client to pass their own token (from Settings page)
+    const { githubToken, webhookSecret } = req.body || {};
+    if (githubToken) process.env.GITHUB_TOKEN = githubToken;
+    if (webhookSecret) process.env.GITHUB_WEBHOOK_SECRET = webhookSecret;
 
     const module = await prisma.module.findFirst({
       where: { OR: [{ id }, { slug: id }] },
