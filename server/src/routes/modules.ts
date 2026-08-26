@@ -309,6 +309,7 @@ modulesRouter.post('/', async (req, res) => {
       backendUrl = 'http://localhost:5000',
       workingDir = '.',
       envVars = [],
+      deployedUrl,
     } = req.body;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
@@ -317,6 +318,15 @@ modulesRouter.post('/', async (req, res) => {
 
     if (!description || typeof description !== 'string' || !description.trim()) {
       return res.status(400).json({ error: 'Module description is required' });
+    }
+
+    let cleanDeployedUrl: string | null = null;
+    if (deployedUrl && typeof deployedUrl === 'string' && deployedUrl.trim()) {
+      const trimmed = deployedUrl.trim();
+      if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+        return res.status(400).json({ error: 'Deployed link must be a valid URL starting with http:// or https://' });
+      }
+      cleanDeployedUrl = trimmed;
     }
 
     const categoryName = category || 'Other';
@@ -369,6 +379,7 @@ modulesRouter.post('/', async (req, res) => {
       workingDir: workingDir || '.',
       envVars: envVarsJson,
       zipStoragePath: storagePath || null,
+      deployedUrl: cleanDeployedUrl,
       isPublished: true,
     };
 
@@ -435,6 +446,201 @@ modulesRouter.post('/', async (req, res) => {
     res.status(201).json({
       success: true,
       module: formatModuleOutput(savedModule),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/modules/:id - Update Module (including Deployed URL)
+modulesRouter.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      description,
+      category,
+      author,
+      version,
+      technologies,
+      deployedUrl,
+      frontendCommand,
+      backendCommand,
+      frontendPort,
+      backendPort,
+      frontendUrl,
+      backendUrl,
+      workingDir,
+      envVars,
+    } = req.body;
+
+    const existing = await prisma.module.findFirst({
+      where: { OR: [{ id }, { slug: id }] },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Module not found' });
+    }
+
+    const updateData: any = {};
+
+    if (name !== undefined && typeof name === 'string' && name.trim()) {
+      updateData.name = name.trim();
+    }
+    if (description !== undefined && typeof description === 'string' && description.trim()) {
+      updateData.description = description.trim();
+    }
+    if (author !== undefined && typeof author === 'string') {
+      updateData.author = author.trim();
+    }
+    if (version !== undefined && typeof version === 'string') {
+      updateData.version = version.trim();
+    }
+    if (category !== undefined && typeof category === 'string' && category.trim()) {
+      updateData.categoryName = category.trim();
+      await prisma.category.upsert({
+        where: { name: updateData.categoryName },
+        update: {},
+        create: { name: updateData.categoryName, slug: updateData.categoryName.toLowerCase().replace(/[^a-z0-9]/g, '-') },
+      });
+    }
+    if (technologies !== undefined) {
+      updateData.technologies = JSON.stringify(Array.isArray(technologies) ? technologies : []);
+    }
+    if (envVars !== undefined) {
+      updateData.envVars = JSON.stringify(Array.isArray(envVars) ? envVars : (typeof envVars === 'string' ? envVars.split(',').map((s: string) => s.trim()).filter(Boolean) : []));
+    }
+
+    if (deployedUrl !== undefined) {
+      if (deployedUrl === null || deployedUrl === '') {
+        updateData.deployedUrl = null;
+      } else if (typeof deployedUrl === 'string') {
+        const trimmed = deployedUrl.trim();
+        if (trimmed === '') {
+          updateData.deployedUrl = null;
+        } else if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+          return res.status(400).json({ error: 'Deployed link must be a valid URL starting with http:// or https://' });
+        } else {
+          updateData.deployedUrl = trimmed;
+        }
+      }
+    }
+
+    if (frontendCommand !== undefined) updateData.frontendCommand = frontendCommand;
+    if (backendCommand !== undefined) updateData.backendCommand = backendCommand;
+    if (frontendPort !== undefined) updateData.frontendPort = Number(frontendPort) || 5173;
+    if (backendPort !== undefined) updateData.backendPort = Number(backendPort) || 5000;
+    if (frontendUrl !== undefined) updateData.frontendUrl = frontendUrl;
+    if (backendUrl !== undefined) updateData.backendUrl = backendUrl;
+    if (workingDir !== undefined) updateData.workingDir = workingDir;
+
+    const updated = await prisma.module.update({
+      where: { id: existing.id },
+      data: updateData,
+      include: { category: true },
+    });
+
+    res.json({
+      success: true,
+      module: formatModuleOutput(updated),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PATCH /api/modules/:id - Patch alias
+modulesRouter.patch('/:id', async (req, res) => {
+  // Delegate to PUT handler logic
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      description,
+      category,
+      author,
+      version,
+      technologies,
+      deployedUrl,
+      frontendCommand,
+      backendCommand,
+      frontendPort,
+      backendPort,
+      frontendUrl,
+      backendUrl,
+      workingDir,
+      envVars,
+    } = req.body;
+
+    const existing = await prisma.module.findFirst({
+      where: { OR: [{ id }, { slug: id }] },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Module not found' });
+    }
+
+    const updateData: any = {};
+
+    if (name !== undefined && typeof name === 'string' && name.trim()) {
+      updateData.name = name.trim();
+    }
+    if (description !== undefined && typeof description === 'string' && description.trim()) {
+      updateData.description = description.trim();
+    }
+    if (author !== undefined && typeof author === 'string') {
+      updateData.author = author.trim();
+    }
+    if (version !== undefined && typeof version === 'string') {
+      updateData.version = version.trim();
+    }
+    if (category !== undefined && typeof category === 'string' && category.trim()) {
+      updateData.categoryName = category.trim();
+      await prisma.category.upsert({
+        where: { name: updateData.categoryName },
+        update: {},
+        create: { name: updateData.categoryName, slug: updateData.categoryName.toLowerCase().replace(/[^a-z0-9]/g, '-') },
+      });
+    }
+    if (technologies !== undefined) {
+      updateData.technologies = JSON.stringify(Array.isArray(technologies) ? technologies : []);
+    }
+    if (envVars !== undefined) {
+      updateData.envVars = JSON.stringify(Array.isArray(envVars) ? envVars : (typeof envVars === 'string' ? envVars.split(',').map((s: string) => s.trim()).filter(Boolean) : []));
+    }
+
+    if (deployedUrl !== undefined) {
+      if (deployedUrl === null || deployedUrl === '') {
+        updateData.deployedUrl = null;
+      } else if (typeof deployedUrl === 'string') {
+        const trimmed = deployedUrl.trim();
+        if (trimmed === '') {
+          updateData.deployedUrl = null;
+        } else if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+          return res.status(400).json({ error: 'Deployed link must be a valid URL starting with http:// or https://' });
+        } else {
+          updateData.deployedUrl = trimmed;
+        }
+      }
+    }
+
+    if (frontendCommand !== undefined) updateData.frontendCommand = frontendCommand;
+    if (backendCommand !== undefined) updateData.backendCommand = backendCommand;
+    if (frontendPort !== undefined) updateData.frontendPort = Number(frontendPort) || 5173;
+    if (backendPort !== undefined) updateData.backendPort = Number(backendPort) || 5000;
+    if (frontendUrl !== undefined) updateData.frontendUrl = frontendUrl;
+    if (backendUrl !== undefined) updateData.backendUrl = backendUrl;
+    if (workingDir !== undefined) updateData.workingDir = workingDir;
+
+    const updated = await prisma.module.update({
+      where: { id: existing.id },
+      data: updateData,
+      include: { category: true },
+    });
+
+    res.json({
+      success: true,
+      module: formatModuleOutput(updated),
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

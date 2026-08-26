@@ -16,7 +16,7 @@ import { MyProjectsPage } from './pages/MyProjectsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { useAuthStore } from './store/useAuthStore';
 import { useProjectStore } from './store/useProjectStore';
-import { FolderGit2, Loader2 } from 'lucide-react';
+import { FolderGit2, Loader2, X } from 'lucide-react';
 
 // ── Auth guard: redirects to /login if not authenticated ─────────────────────
 const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -25,8 +25,8 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
+      <div className="min-h-screen bg-[#F7F8F7] flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-[#1F5E4B] animate-spin" />
       </div>
     );
   }
@@ -128,7 +128,7 @@ export const App: React.FC = () => {
   // ── Protected dashboard layout ────────────────────────────────────────────
   return (
     <RequireAuth>
-      <div className="flex min-h-screen bg-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white">
+      <div className="flex min-h-screen bg-[#F7F8F7] text-[#202524]">
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <Navbar onOpenCreateProject={() => setIsProjectModalOpen(true)} />
@@ -154,33 +154,41 @@ export const App: React.FC = () => {
 
         {/* Quick Create Project Modal */}
         {isProjectModalOpen && (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md space-y-5 shadow-2xl">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <FolderGit2 className="w-5 h-5 text-indigo-400" />
-                <span>Create New Project</span>
-              </h2>
+          <div className="fixed inset-0 bg-[#202524]/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div className="bg-white border border-[#E2E6E4] rounded-3xl p-6 w-full max-w-md space-y-5 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-[#E2E6E4] pb-3">
+                <h2 className="text-lg font-bold text-[#202524] flex items-center gap-2">
+                  <FolderGit2 className="w-5 h-5 text-[#1F5E4B]" />
+                  <span>Create New Project</span>
+                </h2>
+                <button
+                  onClick={() => setIsProjectModalOpen(false)}
+                  className="p-1 rounded-lg text-[#6B7471] hover:text-[#202524] hover:bg-[#F7F8F7]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
               <form onSubmit={handleQuickCreateProject} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Project Name</label>
+                  <label className="text-xs font-semibold text-[#202524]">Project Name</label>
                   <input
                     type="text"
                     value={newProjectName}
                     onChange={(e) => setNewProjectName(e.target.value)}
                     placeholder="e.g. Sales & ERP Workspace"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl px-3.5 py-2.5 text-xs text-[#202524] placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B] focus:ring-2 focus:ring-[#1F5E4B]/15"
                     required
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Description</label>
+                  <label className="text-xs font-semibold text-[#202524]">Description</label>
                   <textarea
                     value={newProjectDesc}
                     onChange={(e) => setNewProjectDesc(e.target.value)}
                     placeholder="Composition combining CRM, Books and Inventory..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 h-24"
+                    className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl px-3.5 py-2.5 text-xs text-[#202524] placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B] focus:ring-2 focus:ring-[#1F5E4B]/15 h-24"
                   />
                 </div>
 
@@ -188,13 +196,13 @@ export const App: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setIsProjectModalOpen(false)}
-                    className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
+                    className="px-4 py-2 rounded-xl bg-[#F7F8F7] hover:bg-[#EAF3EF] text-[#6B7471] hover:text-[#202524] border border-[#E2E6E4] text-xs font-semibold transition"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30"
+                    className="px-5 py-2 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] text-white text-xs font-bold shadow-md shadow-[#1F5E4B]/20 transition"
                   >
                     Create & Open Builder
                   </button>

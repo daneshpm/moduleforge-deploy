@@ -54,7 +54,7 @@ ${moduleRuntimeSpecs}
   - Provides REST endpoints: \`GET /status\`, \`GET /modules\`, \`POST /start-module\`, and \`POST /stop-module\`.
 
 #### 3. High-Speed Shell UI (\`/shell/index.html\`)
-- **Aesthetic**: Premium dark glassmorphic design (\`#080c14\` background, translucent panels, glowing active status badges).
+- **Aesthetic**: Premium design (soft background \`#F7F8F7\`, emerald \`#1F5E4B\` header and accents, crisp \`#FFFFFF\` cards, glowing active status badges).
 - **Sidebar**: Dashboard home view + dedicated buttons for each integrated module with real-time status dots.
 - **On-Demand Lazy Loading**:
   - Do NOT load all iframes simultaneously on initial page load (prevents browser lag and high RAM/CPU usage).
@@ -87,24 +87,24 @@ ${moduleRuntimeSpecs}
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-0 relative my-6">
+    <div className="fixed inset-0 bg-[#202524]/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in overflow-y-auto">
+      <div className="bg-white border border-[#E2E6E4] rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-0 relative my-6">
         {/* Header */}
-        <div className="bg-slate-950 p-5 border-b border-slate-800 flex items-center justify-between">
+        <div className="bg-white p-5 border-b border-[#E2E6E4] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
+            <div className="p-2 rounded-2xl bg-[#EAF3EF] text-[#1F5E4B] border border-[#1F5E4B]/20">
               <Package className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">Export & Run Project</h2>
-              <p className="text-xs text-slate-400">
-                Download project archive and run the orchestration prompt for <strong className="text-slate-200">{project.name}</strong>
+              <h2 className="text-base font-bold text-[#202524]">Export & Run Project</h2>
+              <p className="text-xs text-[#6B7471]">
+                Download project archive and run the orchestration prompt for <strong className="text-[#202524]">{project.name}</strong>
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            className="p-1.5 rounded-lg text-[#6B7471] hover:text-[#202524] hover:bg-[#F7F8F7] transition"
           >
             <X className="w-4 h-4" />
           </button>
@@ -117,7 +117,7 @@ ${moduleRuntimeSpecs}
             {/* Option 1: Export ZIP */}
             <button
               onClick={handleDownload}
-              className="py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition"
+              className="py-3 px-4 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] text-white font-bold text-xs shadow-md shadow-[#1F5E4B]/20 flex items-center justify-center gap-2 transition"
             >
               <Download className="w-4 h-4" />
               <span>{hasDownloaded ? 'Re-download ZIP' : '1. Export ZIP Archive'}</span>
@@ -126,35 +126,35 @@ ${moduleRuntimeSpecs}
             {/* Option 2: Copy Prompt */}
             <button
               onClick={handleCopyPrompt}
-              className="py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/25 flex items-center justify-center gap-2 transition"
+              className="py-3 px-4 rounded-xl bg-[#2E7D5B] hover:bg-[#246549] text-white font-bold text-xs shadow-md shadow-[#2E7D5B]/20 flex items-center justify-center gap-2 transition"
             >
-              {isCopied ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
-              <span>{isCopied ? 'Copied Prompt ✓' : '2. Copy & Run This Prompt'}</span>
+              {isCopied ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
+              <span>{isCopied ? 'Copied Prompt ✓' : '2. Copy & Run Prompt'}</span>
             </button>
           </div>
 
           {/* Prompt Preview Box */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-              <span className="flex items-center gap-1.5 text-indigo-400 font-semibold">
+            <div className="flex items-center justify-between text-xs font-mono text-[#6B7471]">
+              <span className="flex items-center gap-1.5 text-[#1F5E4B] font-bold">
                 <Terminal className="w-3.5 h-3.5" />
                 <span>Run This Prompt (Also saved as PROMPT.md in ZIP)</span>
               </span>
               <button
                 onClick={handleCopyPrompt}
-                className="text-purple-400 hover:text-purple-300 font-semibold"
+                className="text-[#1F5E4B] hover:text-[#174739] font-bold"
               >
                 {isCopied ? 'Copied ✓' : 'Copy Full Prompt'}
               </button>
             </div>
-            <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-300 leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap select-all">
+            <pre className="p-4 rounded-2xl bg-[#F7F8F7] border border-[#E2E6E4] text-[11px] font-mono text-[#202524] leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap select-all">
               {promptText}
             </pre>
           </div>
 
           {/* Quick instructions */}
-          <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-400 flex items-center gap-2">
-            <FileCode className="w-4 h-4 text-indigo-400 shrink-0" />
+          <div className="p-3.5 rounded-2xl bg-[#EAF3EF] border border-[#1F5E4B]/20 text-xs text-[#202524] flex items-center gap-2">
+            <FileCode className="w-4 h-4 text-[#1F5E4B] shrink-0" />
             <span>
               Extract the exported ZIP and paste this prompt into your coding assistant to orchestrate all modules under one unified interface!
             </span>
@@ -162,10 +162,10 @@ ${moduleRuntimeSpecs}
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-end">
+        <div className="p-4 bg-[#F7F8F7] border-t border-[#E2E6E4] flex justify-end">
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition"
+            className="px-5 py-2 rounded-xl bg-white hover:bg-[#EAF3EF] text-[#202524] border border-[#E2E6E4] font-semibold text-xs transition shadow-xs"
           >
             Close
           </button>

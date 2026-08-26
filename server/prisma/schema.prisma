@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -67,6 +67,7 @@ model Module {
   zipStoragePath      String?
   moduleJson          String?         // Optional JSON string if module.json is present
   downloads           Int             @default(0)
+  deployedUrl         String?
   isPublished         Boolean         @default(true)
   authorId            String?
   authorUser          User?           @relation("UserModules", fields: [authorId], references: [id])

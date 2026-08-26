@@ -27,6 +27,7 @@ interface ModuleState {
   validateModuleZip: (file: File) => Promise<ValidationResult>;
   validateGithubRepo: (repoUrl: string) => Promise<ValidationResult>;
   createModule: (metadata: ModuleMetadataInput) => Promise<{ success: boolean; module?: Module; error?: string }>;
+  updateModule: (id: string, metadata: Partial<ModuleMetadataInput>) => Promise<{ success: boolean; module?: Module; error?: string }>;
   uploadModuleZip: (file: File) => Promise<ValidationResult>;
   importGithubRepo: (repoUrl: string) => Promise<ValidationResult>;
   deleteModule: (id: string) => Promise<{ success: boolean; error?: string }>;
@@ -149,6 +150,26 @@ export const useModuleStore = create<ModuleState>((set, get) => ({
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to save module');
+      }
+
+      get().fetchModules();
+      return { success: true, module: data.module };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  },
+
+  updateModule: async (id: string, metadata: Partial<ModuleMetadataInput>) => {
+    try {
+      const res = await fetch(`${API_BASE}/modules/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(metadata),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update module');
       }
 
       get().fetchModules();

@@ -67,6 +67,7 @@ export interface Module {
   workingDir?: string;
   envVars?: string | string[];
   zipStoragePath?: string;
+  deployedUrl?: string | null;
   moduleJson?: string;
   downloads: number;
   isPublished: boolean;
@@ -88,6 +89,7 @@ export interface ModuleMetadataInput {
   githubOwner?: string;
   githubRepo?: string;
   githubBranch?: string;
+  deployedUrl?: string;
   frontendCommand?: string;
   backendCommand?: string;
   frontendPort?: number;

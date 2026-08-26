@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Search, Filter, ArrowUpDown, Boxes, Plus, Layers } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, Boxes, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useModuleStore } from '../store/useModuleStore';
 import { ModuleCard } from '../components/ModuleCard';
@@ -32,46 +32,46 @@ export const MarketplacePage: React.FC = () => {
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
-            <Boxes className="w-7 h-7 text-indigo-400" />
-            <span>Module Marketplace</span>
+          <h1 className="text-3xl font-black text-[#202524] tracking-tight flex items-center gap-3">
+            <Boxes className="w-7 h-7 text-[#1F5E4B]" />
+            <span className="primary-text-gradient">Module Marketplace</span>
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Browse reusable software modules, inspect entry points, and add them to your visual canvas.
+          <p className="text-sm text-[#6B7471] mt-1">
+            Browse verified reusable software modules, inspect schemas, and add them to your visual architecture canvas.
           </p>
         </div>
 
         <button
           onClick={() => navigate('/modules/create')}
-          className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition self-start md:self-auto"
+          className="px-5 py-2.5 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] text-white text-xs font-bold shadow-md shadow-[#1F5E4B]/20 flex items-center gap-2 transition transform active:scale-95 self-start md:self-auto"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-4 h-4 text-white stroke-[2.5]" />
           <span>Publish Module</span>
         </button>
       </div>
 
       {/* Filter Toolbar: Search, Sort & Category Pills */}
-      <div className="glass-panel p-4 rounded-xl space-y-4 border border-slate-800">
+      <div className="bg-white p-5 rounded-2xl space-y-4 border border-[#E2E6E4] shadow-card">
         {/* Row 1: Search & Sort */}
         <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
           <div className="relative flex-1 w-full">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B7471]" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filter modules by keyword, slug, description or author..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+              placeholder="Filter modules by keyword, category, description or author..."
+              className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl pl-10 pr-4 py-2.5 text-xs text-[#202524] placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B] focus:ring-2 focus:ring-[#1F5E4B]/15 transition"
             />
           </div>
 
           <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-            <ArrowUpDown className="w-4 h-4 text-slate-400" />
-            <span className="text-xs text-slate-400 font-mono">Sort by:</span>
+            <ArrowUpDown className="w-4 h-4 text-[#1F5E4B]" />
+            <span className="text-xs text-[#6B7471] font-mono">Sort by:</span>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 font-mono"
+              className="bg-[#F7F8F7] border border-[#E2E6E4] text-[#202524] text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#1F5E4B] font-mono cursor-pointer"
             >
               <option value="popular">Most Popular</option>
               <option value="downloads">Most Downloaded</option>
@@ -83,17 +83,17 @@ export const MarketplacePage: React.FC = () => {
 
         {/* Row 2: Category Pills */}
         <div className="flex items-center gap-2 overflow-x-auto pt-2 pb-1 no-scrollbar">
-          <Filter className="w-4 h-4 text-slate-400 shrink-0 mr-1" />
+          <Filter className="w-4 h-4 text-[#1F5E4B] shrink-0 mr-1" />
           {allCategories.map((cat) => {
             const isSelected = selectedCategory === cat;
             return (
               <button
                 key={cat}
                 onClick={() => setCategory(cat)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-150 ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-150 ${
                   isSelected
-                    ? 'bg-indigo-600 text-white font-semibold shadow-sm shadow-indigo-600/30'
-                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'
+                    ? 'bg-[#1F5E4B] text-white shadow-sm shadow-[#1F5E4B]/20'
+                    : 'bg-[#F7F8F7] text-[#6B7471] hover:text-[#202524] hover:bg-[#EAF3EF] border border-[#E2E6E4]'
                 }`}
               >
                 {cat}
@@ -103,33 +103,31 @@ export const MarketplacePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Module Grid */}
+      {/* Modules Grid */}
       {isLoading ? (
-        <div className="py-20 text-center space-y-3">
-          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-xs font-mono text-slate-400">Loading marketplace modules...</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="h-64 rounded-2xl bg-white border border-[#E2E6E4] animate-pulse shadow-card" />
+          ))}
         </div>
       ) : modules.length === 0 ? (
-        <div className="py-20 text-center glass-panel rounded-2xl border border-slate-800 p-8 space-y-3 max-w-md mx-auto">
-          <Layers className="w-10 h-10 text-slate-600 mx-auto" />
-          <h3 className="text-lg font-bold text-white">No Modules Found</h3>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            No software modules matched category <span className="text-indigo-400 font-mono">"{selectedCategory}"</span> with query <span className="text-indigo-400 font-mono">"{searchQuery}"</span>.
+        <div className="text-center py-20 bg-white rounded-3xl border border-[#E2E6E4] space-y-4 shadow-card">
+          <Boxes className="w-12 h-12 text-[#6B7471] mx-auto" />
+          <h3 className="text-lg font-bold text-[#202524]">No modules match your criteria</h3>
+          <p className="text-xs text-[#6B7471] max-w-sm mx-auto">
+            Try adjusting your search filters, or be the first to publish a new software module to the repository.
           </p>
           <button
-            onClick={() => {
-              setCategory('All');
-              setSearchQuery('');
-            }}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition"
+            onClick={() => navigate('/modules/create')}
+            className="px-4 py-2 bg-[#1F5E4B] hover:bg-[#174739] text-white rounded-xl text-xs font-bold shadow-md shadow-[#1F5E4B]/20"
           >
-            Clear Filters
+            Upload New Module
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {modules.map((mod) => (
-            <ModuleCard key={mod.id} module={mod} />
+          {modules.map((module) => (
+            <ModuleCard key={module.id} module={module} />
           ))}
         </div>
       )}

@@ -142,17 +142,17 @@ export const GitHubSyncCard: React.FC<GitHubSyncCardProps> = ({ module, onModule
 
   if (module.sourceType !== 'github') {
     return (
-      <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+      <div className="p-5 rounded-2xl bg-white border border-[#E2E6E4] space-y-3 shadow-card">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-slate-400 font-bold text-sm">
+          <div className="flex items-center gap-2 text-[#6B7471] font-bold text-sm">
             <Github className="w-4 h-4" />
             <span>GitHub Sync</span>
           </div>
-          <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-slate-800 text-slate-400 border border-slate-700">
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-[#F7F8F7] text-[#6B7471] border border-[#E2E6E4]">
             ⚪ Not connected to GitHub
           </span>
         </div>
-        <p className="text-xs text-slate-400 leading-relaxed">
+        <p className="text-xs text-[#6B7471] leading-relaxed">
           This module was uploaded directly as a ZIP package. To enable continuous team
           synchronization via GitHub webhooks, import from GitHub instead.
         </p>
@@ -167,100 +167,97 @@ export const GitHubSyncCard: React.FC<GitHubSyncCardProps> = ({ module, onModule
   // ── Webhook panel helpers ─────────────────────────────────────────────────
 
   const webhookRegistered = webhookStatus?.registered === true;
-  const webhookActive = webhookStatus?.active !== false; // treat undefined as active
+  const webhookActive = webhookStatus?.active !== false;
   const tokenMissing = webhookStatus?.tokenMissing === true;
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
-    <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-5">
-
-      {/* ── Header & status badge ── */}
+    <div className="p-5 rounded-2xl bg-white border border-[#E2E6E4] space-y-5 shadow-card">
+      {/* Header & status badge */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+          <div className="w-8 h-8 rounded-lg bg-[#EAF3EF] border border-[#1F5E4B]/20 flex items-center justify-center text-[#1F5E4B]">
             <Github className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="font-bold text-white text-sm">GitHub Team Sync</h3>
-            <p className="text-[11px] font-mono text-slate-400">{repoName}</p>
+            <h3 className="font-bold text-[#202524] text-sm">GitHub Team Sync</h3>
+            <p className="text-[11px] font-mono text-[#6B7471]">{repoName}</p>
           </div>
         </div>
 
         {status === 'synced' && (
-          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5 font-mono">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#F0F9F5] text-[#2E7D5B] border border-[#2E7D5B]/30 flex items-center gap-1.5 font-mono">
+            <span className="w-2 h-2 rounded-full bg-[#2E7D5B] animate-pulse" />
             <span>🟢 Synced</span>
           </span>
         )}
         {status === 'update_available' && (
-          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1.5 font-mono">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5 font-mono">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             <span>🟡 Update available</span>
           </span>
         )}
         {status === 'sync_failed' && (
-          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center gap-1.5 font-mono">
-            <span className="w-2 h-2 rounded-full bg-rose-400" />
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#FDF3F3] text-[#C94A4A] border border-[#C94A4A]/20 flex items-center gap-1.5 font-mono">
+            <span className="w-2 h-2 rounded-full bg-[#C94A4A]" />
             <span>🔴 Sync failed</span>
           </span>
         )}
       </div>
 
-      {/* ── Repo info grid ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono">
+      {/* Repo info grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-[#F7F8F7] border border-[#E2E6E4] text-xs font-mono">
         <div>
-          <span className="text-slate-500 block text-[10px] uppercase">Repository</span>
-          <span className="text-slate-200 font-semibold truncate block">{repoName}</span>
+          <span className="text-[#6B7471] block text-[10px] uppercase">Repository</span>
+          <span className="text-[#202524] font-semibold truncate block">{repoName}</span>
         </div>
         <div>
-          <span className="text-slate-500 block text-[10px] uppercase">Branch</span>
-          <span className="text-indigo-400 font-semibold">{module.githubBranch || 'main'}</span>
+          <span className="text-[#6B7471] block text-[10px] uppercase">Branch</span>
+          <span className="text-[#1F5E4B] font-semibold">{module.githubBranch || 'main'}</span>
         </div>
         <div>
-          <span className="text-slate-500 block text-[10px] uppercase">Current Commit</span>
-          <span className="text-amber-300 font-semibold">
+          <span className="text-[#6B7471] block text-[10px] uppercase">Current Commit</span>
+          <span className="text-[#2E7D5B] font-semibold">
             {module.githubCurrentCommit?.slice(0, 7) || '—'}
           </span>
         </div>
         <div>
-          <span className="text-slate-500 block text-[10px] uppercase">Last Synced</span>
-          <span className="text-slate-300 truncate block">{formattedDate}</span>
+          <span className="text-[#6B7471] block text-[10px] uppercase">Last Synced</span>
+          <span className="text-[#202524] truncate block">{formattedDate}</span>
         </div>
       </div>
 
-      {/* ── Live Webhook panel ── */}
-      <div className="rounded-xl border border-slate-800 overflow-hidden">
+      {/* Live Webhook panel */}
+      <div className="rounded-xl border border-[#E2E6E4] overflow-hidden">
         {/* Panel header */}
-        <div className="flex items-center justify-between px-4 py-3 bg-slate-950 border-b border-slate-800">
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
-            <Zap className="w-3.5 h-3.5 text-indigo-400" />
+        <div className="flex items-center justify-between px-4 py-3 bg-[#F7F8F7] border-b border-[#E2E6E4]">
+          <div className="flex items-center gap-2 text-xs font-bold text-[#202524]">
+            <Zap className="w-3.5 h-3.5 text-[#1F5E4B]" />
             <span>Live Push Webhook</span>
           </div>
 
           {/* Webhook status pill */}
           {isLoadingWebhook ? (
-            <span className="flex items-center gap-1.5 text-xs text-slate-500 font-mono">
+            <span className="flex items-center gap-1.5 text-xs text-[#6B7471] font-mono">
               <Loader2 className="w-3 h-3 animate-spin" />
               Checking…
             </span>
           ) : tokenMissing ? (
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1.5">
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5 font-bold">
               <AlertTriangle className="w-3 h-3" />
               Token missing
             </span>
           ) : webhookRegistered && webhookActive ? (
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-[#F0F9F5] text-[#2E7D5B] border border-[#2E7D5B]/30 flex items-center gap-1.5 font-bold">
+              <span className="w-2 h-2 rounded-full bg-[#2E7D5B] animate-pulse" />
               Active
             </span>
           ) : webhookRegistered && !webhookActive ? (
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5 font-bold">
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
               Inactive
             </span>
           ) : (
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1.5">
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono bg-[#F7F8F7] text-[#6B7471] border border-[#E2E6E4] flex items-center gap-1.5">
               <ZapOff className="w-3 h-3" />
               Not registered
             </span>
@@ -268,49 +265,35 @@ export const GitHubSyncCard: React.FC<GitHubSyncCardProps> = ({ module, onModule
         </div>
 
         {/* Panel body */}
-        <div className="px-4 py-3 space-y-3 bg-slate-900/60">
+        <div className="px-4 py-3 space-y-3 bg-white">
           {tokenMissing ? (
-            /* Token missing explainer */
-            <p className="text-xs text-amber-400/80 leading-relaxed">
-              Set <code className="bg-amber-500/10 px-1 rounded text-amber-300">GITHUB_TOKEN</code> and{' '}
-              <code className="bg-amber-500/10 px-1 rounded text-amber-300">WEBHOOK_PUBLIC_URL</code> in{' '}
-              <code className="bg-amber-500/10 px-1 rounded text-amber-300">server/.env</code> to enable
-              automatic webhook registration. The token needs <strong>repo</strong> or{' '}
-              <strong>admin:repo_hook</strong> scope.
+            <p className="text-xs text-amber-700 leading-relaxed">
+              Set <code className="bg-amber-50 px-1 rounded text-amber-800">GITHUB_TOKEN</code> and{' '}
+              <code className="bg-amber-50 px-1 rounded text-amber-800">WEBHOOK_PUBLIC_URL</code> in{' '}
+              <code className="bg-amber-50 px-1 rounded text-amber-800">server/.env</code> to enable
+              automatic webhook registration.
             </p>
           ) : webhookRegistered ? (
-            /* Registered state */
             <div className="space-y-2">
-              <div className="flex items-start gap-2 text-xs font-mono text-slate-400">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 mt-0.5 shrink-0" />
+              <div className="flex items-start gap-2 text-xs font-mono text-[#6B7471]">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#2E7D5B] mt-0.5 shrink-0" />
                 <div className="min-w-0">
-                  <span className="text-emerald-400 font-semibold">Webhook active</span>
+                  <span className="text-[#2E7D5B] font-bold">Webhook active</span>
                   {webhookStatus?.webhookUrl && (
-                    <span className="block text-[11px] text-slate-500 truncate mt-0.5">
+                    <span className="block text-[11px] text-[#6B7471] truncate mt-0.5">
                       → {webhookStatus.webhookUrl}
-                    </span>
-                  )}
-                  {webhookStatus?.webhookId && (
-                    <span className="text-[11px] text-slate-600 mt-0.5 block">
-                      id: {webhookStatus.webhookId}
                     </span>
                   )}
                 </div>
               </div>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                Every push to <span className="text-slate-300">{module.githubBranch || 'main'}</span> will
-                automatically sync this module and broadcast a live update to all connected team members.
+              <p className="text-[11px] text-[#6B7471] leading-relaxed">
+                Every push to <span className="text-[#202524] font-semibold">{module.githubBranch || 'main'}</span> will
+                automatically sync this module and broadcast a live update.
               </p>
             </div>
           ) : (
-            /* Not registered state */
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Register a webhook so GitHub automatically notifies ModuleForge on every push — no manual
-              syncing needed. GitHub will POST to{' '}
-              <code className="bg-slate-800 px-1 rounded text-slate-300 text-[11px]">
-                {webhookStatus?.webhookUrl || '/api/webhooks/github'}
-              </code>
-              .
+            <p className="text-xs text-[#6B7471] leading-relaxed">
+              Register a webhook so GitHub automatically notifies ModuleForge on every push.
             </p>
           )}
 
@@ -321,7 +304,7 @@ export const GitHubSyncCard: React.FC<GitHubSyncCardProps> = ({ module, onModule
                 <button
                   onClick={handleRegisterWebhook}
                   disabled={isRegisteringWebhook}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 transition"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-[#1F5E4B]/20 transition"
                 >
                   {isRegisteringWebhook ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -334,7 +317,7 @@ export const GitHubSyncCard: React.FC<GitHubSyncCardProps> = ({ module, onModule
                 <button
                   onClick={handleDeleteWebhook}
                   disabled={isDeletingWebhook}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-50 text-rose-400 border border-rose-500/20 text-xs font-semibold transition"
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#FDF3F3] hover:bg-[#FBE6E6] disabled:opacity-50 text-[#C94A4A] border border-[#C94A4A]/20 text-xs font-bold transition"
                 >
                   {isDeletingWebhook ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -349,7 +332,7 @@ export const GitHubSyncCard: React.FC<GitHubSyncCardProps> = ({ module, onModule
                 onClick={loadWebhookStatus}
                 disabled={isLoadingWebhook}
                 title="Refresh webhook status"
-                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 transition"
+                className="p-2 rounded-xl bg-[#F7F8F7] hover:bg-[#EAF3EF] text-[#6B7471] border border-[#E2E6E4] transition"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoadingWebhook ? 'animate-spin' : ''}`} />
               </button>
@@ -358,15 +341,15 @@ export const GitHubSyncCard: React.FC<GitHubSyncCardProps> = ({ module, onModule
         </div>
       </div>
 
-      {/* ── Toast message ── */}
+      {/* Toast message */}
       {message && (
         <div
           className={`p-3 rounded-xl border text-xs font-mono flex items-center gap-2 animate-fade-in ${
             message.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+              ? 'bg-[#F0F9F5] border-[#2E7D5B]/30 text-[#2E7D5B] font-bold'
               : message.type === 'error'
-              ? 'bg-rose-500/10 border-rose-500/20 text-rose-300'
-              : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-300'
+              ? 'bg-[#FDF3F3] border-[#C94A4A]/20 text-[#C94A4A] font-bold'
+              : 'bg-[#EAF3EF] border-[#1F5E4B]/20 text-[#1F5E4B] font-bold'
           }`}
         >
           <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -374,12 +357,12 @@ export const GitHubSyncCard: React.FC<GitHubSyncCardProps> = ({ module, onModule
         </div>
       )}
 
-      {/* ── Manual sync & check actions ── */}
+      {/* Manual sync & check actions */}
       <div className="flex items-center gap-3">
         <button
           onClick={handleSync}
           disabled={isSyncing}
-          className="flex-1 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-indigo-600/30 flex items-center justify-center gap-2 transition"
+          className="flex-1 py-2.5 px-4 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-[#1F5E4B]/20 flex items-center justify-center gap-2 transition"
         >
           <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
           <span>{isSyncing ? 'Syncing…' : status === 'update_available' ? 'Sync Latest Version' : 'Sync Now'}</span>
@@ -388,9 +371,9 @@ export const GitHubSyncCard: React.FC<GitHubSyncCardProps> = ({ module, onModule
         <button
           onClick={handleCheckSync}
           disabled={isChecking}
-          className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center gap-2 transition"
+          className="py-2.5 px-4 rounded-xl bg-[#F7F8F7] hover:bg-[#EAF3EF] disabled:opacity-50 text-[#202524] text-xs font-semibold border border-[#E2E6E4] flex items-center gap-2 transition"
         >
-          <RefreshCw className={`w-3.5 h-3.5 text-slate-400 ${isChecking ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 text-[#6B7471] ${isChecking ? 'animate-spin' : ''}`} />
           <span>Check Status</span>
         </button>
 
@@ -398,18 +381,18 @@ export const GitHubSyncCard: React.FC<GitHubSyncCardProps> = ({ module, onModule
           href={repoUrl}
           target="_blank"
           rel="noreferrer"
-          className="py-2.5 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
+          className="py-2.5 px-3.5 rounded-xl bg-[#F7F8F7] hover:bg-[#EAF3EF] text-[#202524] border border-[#E2E6E4] text-xs font-semibold flex items-center gap-1.5 transition"
         >
           <span>GitHub</span>
-          <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+          <ExternalLink className="w-3.5 h-3.5 text-[#6B7471]" />
         </a>
       </div>
 
-      {/* ── Sync history ── */}
-      <div className="space-y-2 pt-2 border-t border-slate-800/80">
-        <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-          <span className="flex items-center gap-1.5 font-semibold text-slate-300">
-            <History className="w-3.5 h-3.5 text-indigo-400" />
+      {/* Sync history */}
+      <div className="space-y-2 pt-2 border-t border-[#E2E6E4]">
+        <div className="flex items-center justify-between text-xs font-mono text-[#6B7471]">
+          <span className="flex items-center gap-1.5 font-bold text-[#202524]">
+            <History className="w-3.5 h-3.5 text-[#1F5E4B]" />
             <span>Version Sync History</span>
           </span>
           <span>{syncHistory.length} sync logs</span>
@@ -420,20 +403,20 @@ export const GitHubSyncCard: React.FC<GitHubSyncCardProps> = ({ module, onModule
             {syncHistory.map((log) => (
               <div
                 key={log.id}
-                className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 text-xs"
+                className="p-2.5 rounded-xl bg-[#F7F8F7] border border-[#E2E6E4] flex items-center justify-between gap-3 text-xs"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <GitCommit className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                  <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-300 font-bold text-[11px] border border-indigo-500/20 shrink-0">
+                  <GitCommit className="w-3.5 h-3.5 text-[#1F5E4B] shrink-0" />
+                  <span className="px-1.5 py-0.5 rounded bg-[#EAF3EF] text-[#1F5E4B] font-bold text-[11px] border border-[#1F5E4B]/20 shrink-0">
                     {log.commitSha.slice(0, 7)}
                   </span>
-                  <span className="text-slate-300 truncate text-xs" title={log.commitMessage || ''}>
+                  <span className="text-[#202524] truncate text-xs" title={log.commitMessage || ''}>
                     {log.commitMessage || 'Synchronized update'}
                   </span>
                 </div>
-                <div className="flex items-center gap-3 shrink-0 text-[11px] text-slate-500">
+                <div className="flex items-center gap-3 shrink-0 text-[11px] text-[#6B7471]">
                   <span className="hidden sm:flex items-center gap-1">
-                    <User className="w-3 h-3 text-slate-600" />
+                    <User className="w-3 h-3 text-[#6B7471]" />
                     {log.author || 'Dev'}
                   </span>
                   <span>{new Date(log.syncedAt).toLocaleDateString()}</span>
@@ -442,7 +425,7 @@ export const GitHubSyncCard: React.FC<GitHubSyncCardProps> = ({ module, onModule
             ))}
           </div>
         ) : (
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-500 italic text-center">
+          <div className="p-3 rounded-xl bg-[#F7F8F7] border border-[#E2E6E4] text-xs font-mono text-[#6B7471] italic text-center">
             No sync history yet. Register the webhook or click "Sync Now" to log the first entry.
           </div>
         )}
