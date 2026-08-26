@@ -16,6 +16,12 @@ import {
   Download,
   X,
   Globe,
+  Copy,
+  Check,
+  KeyRound,
+  ShieldCheck,
+  UserCheck,
+  UserX,
 } from 'lucide-react';
 import { Project, ProjectMember, ProjectActivity, ModuleDeployment, ProjectModule } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
@@ -31,6 +37,8 @@ export const TeamProjectDashboard: React.FC<TeamProjectDashboardProps> = ({ proj
     subscribeToProjectEvents,
     inviteMember,
     removeMember,
+    approveMember,
+    rejectMember,
     connectModuleRepo,
     syncProjectModule,
     syncModuleNow,
@@ -52,6 +60,8 @@ export const TeamProjectDashboard: React.FC<TeamProjectDashboardProps> = ({ proj
   const [syncingPmId, setSyncingPmId] = useState<string | null>(null);
   const [startingPmId, setStartingPmId] = useState<string | null>(null);
   const [isSyncingProject, setIsSyncingProject] = useState(false);
+  const [copiedJoinCode, setCopiedJoinCode] = useState(false);
+  const [copiedJoinLink, setCopiedJoinLink] = useState(false);
 
   // Invite Modal
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -157,6 +167,17 @@ export const TeamProjectDashboard: React.FC<TeamProjectDashboardProps> = ({ proj
   const handleRemoveMember = async (memberId: string) => {
     if (!confirm('Are you sure you want to remove this team member?')) return;
     await removeMember(project.id, memberId);
+    loadData();
+  };
+
+  const handleApproveMember = async (memberId: string) => {
+    await approveMember(project.id, memberId);
+    loadData();
+  };
+
+  const handleRejectMember = async (memberId: string) => {
+    if (!confirm('Are you sure you want to decline this member join request?')) return;
+    await rejectMember(project.id, memberId);
     loadData();
   };
 
@@ -283,79 +304,170 @@ export const TeamProjectDashboard: React.FC<TeamProjectDashboardProps> = ({ proj
         />
       )}
 
-      {/* Team Members List */}
-      <div className="p-5 rounded-2xl bg-white border border-[#E2E6E4] space-y-3 shadow-card">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-bold text-[#202524]">
-            <Users className="w-4 h-4 text-[#1F5E4B]" />
-            <span>Team Members ({members.length + 1})</span>
+      {/* Team Collaboration & Join Code Hub */}
+      <div className="p-5 rounded-2xl bg-white border border-[#E2E6E4] space-y-4 shadow-card">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2E6E4] pb-4">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-bold text-[#202524]">
+              <Users className="w-4 h-4 text-[#1F5E4B]" />
+              <span>Team Access & Collaboration Hub</span>
+            </div>
+            <p className="text-xs text-[#6B7471] mt-0.5">
+              Share the Join Code or Direct Link. You must approve each member request before they gain access.
+            </p>
           </div>
-          <span className="text-xs text-[#6B7471] font-mono">GitHub is Source of Truth</span>
+
+          {/* Join Code & Copy Actions */}
+          <div className="flex items-center gap-2 font-mono">
+            <div className="px-3 py-1.5 rounded-xl bg-[#EAF3EF] border border-[#1F5E4B]/20 flex items-center gap-2">
+              <KeyRound className="w-3.5 h-3.5 text-[#1F5E4B]" />
+              <span className="text-[10px] text-[#6B7471] uppercase font-bold">Code:</span>
+              <span className="text-xs font-black text-[#1F5E4B] tracking-wider">{project.joinCode || 'MF-TEAM'}</span>
+            </div>
+
+            <button
+              onClick={() => {
+                if (project.joinCode) {
+                  navigator.clipboard.writeText(project.joinCode);
+                  setCopiedJoinCode(true);
+                  setTimeout(() => setCopiedJoinCode(false), 2000);
+                }
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-[#F7F8F7] hover:bg-[#EAF3EF] text-[#202524] hover:text-[#1F5E4B] border border-[#E2E6E4] text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs"
+              title="Copy 6-character Join Code"
+            >
+              {copiedJoinCode ? <Check className="w-3.5 h-3.5 text-[#2E7D5B]" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedJoinCode ? 'Copied!' : 'Copy Code'}</span>
+            </button>
+
+            <button
+              onClick={() => {
+                const link = `${window.location.origin}/join-project?code=${project.joinCode || project.id}`;
+                navigator.clipboard.writeText(link);
+                setCopiedJoinLink(true);
+                setTimeout(() => setCopiedJoinLink(false), 2000);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] text-white text-xs font-bold flex items-center gap-1.5 transition shadow-xs"
+              title="Copy direct invite URL for team members"
+            >
+              {copiedJoinLink ? <Check className="w-3.5 h-3.5 text-white" /> : <Globe className="w-3.5 h-3.5" />}
+              <span>{copiedJoinLink ? 'Link Copied!' : 'Copy Join Link'}</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 pt-1">
-          {/* Owner Badge */}
-          <div className="px-3 py-1.5 rounded-xl bg-[#EAF3EF] border border-[#1F5E4B]/20 flex items-center gap-2 text-xs">
-            <div className="w-6 h-6 rounded-full bg-[#1F5E4B] text-white font-bold flex items-center justify-center text-[10px]">
-              S
+        {/* PENDING APPROVAL REQUESTS SECTION */}
+        {members.filter((m) => m.status === 'pending').length > 0 && (
+          <div className="p-4 rounded-2xl bg-[#FFF9E6] border border-[#E5C158]/40 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-amber-700" />
+                <span className="text-xs font-bold text-amber-900">
+                  Pending Member Approval Requests ({members.filter((m) => m.status === 'pending').length})
+                </span>
+              </div>
+              <span className="text-[11px] font-mono text-amber-800 font-semibold">Action Required</span>
             </div>
-            <div>
-              <span className="font-bold text-[#202524] block leading-tight">Shalya</span>
-              <span className="text-[10px] text-[#1F5E4B] font-mono font-bold">Owner</span>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {members
+                .filter((m) => m.status === 'pending')
+                .map((m) => (
+                  <div
+                    key={m.id}
+                    className="p-3 rounded-xl bg-white border border-[#E5C158]/50 flex items-center justify-between gap-3 shadow-2xs"
+                  >
+                    <div className="flex items-center gap-2.5 overflow-hidden">
+                      <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-800 font-bold flex items-center justify-center text-xs shrink-0">
+                        {(m.name || m.email).charAt(0).toUpperCase()}
+                      </div>
+                      <div className="truncate">
+                        <span className="text-xs font-bold text-[#202524] block truncate">{m.name || 'Developer'}</span>
+                        <span className="text-[11px] text-[#6B7471] font-mono block truncate">{m.email}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => handleApproveMember(m.id)}
+                        className="px-2.5 py-1 rounded-lg bg-[#2E7D5B] hover:bg-[#246549] text-white text-xs font-bold flex items-center gap-1 transition shadow-xs"
+                        title="Approve member to collaborate"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>Approve</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleRejectMember(m.id)}
+                        className="p-1 rounded-lg bg-[#F7F8F7] hover:bg-[#FDF3F3] text-[#6B7471] hover:text-[#C94A4A] border border-[#E2E6E4] transition"
+                        title="Decline join request"
+                      >
+                        <UserX className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
             </div>
           </div>
+        )}
 
-          {/* Members Badges */}
-          {members.map((m) => {
-            const isPending = m.status === 'pending';
-            return (
-              <div
-                key={m.id}
-                className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 text-xs group transition ${
-                  isPending ? 'bg-[#F7F8F7] border-amber-300' : 'bg-white border-[#E2E6E4]'
-                }`}
-              >
-                <div className={`w-6 h-6 rounded-full text-white font-bold flex items-center justify-center text-[10px] ${
-                  isPending ? 'bg-amber-600' : 'bg-[#1F5E4B]'
-                }`}>
-                  {m.email.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-semibold text-[#202524] block leading-tight truncate max-w-[120px]">{m.email}</span>
-                    <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold ${
-                      isPending ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-[#F0F9F5] text-[#2E7D5B] border border-[#2E7D5B]/20'
-                    }`}>
-                      {isPending ? 'Pending' : 'Joined'}
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-[#6B7471] font-mono capitalize">{m.role}</span>
-                </div>
+        {/* ACTIVE APPROVED MEMBERS LIST */}
+        <div className="space-y-2 pt-1">
+          <span className="text-[11px] font-mono font-bold text-[#6B7471] uppercase tracking-wider block">
+            Approved Active Collaborators
+          </span>
 
-                {isPending && m.inviteToken && (
-                  <button
-                    onClick={async () => {
-                      const link = `${window.location.origin}/join-project?token=${m.inviteToken}`;
-                      await navigator.clipboard.writeText(link);
-                      alert(`Copied direct invite link for ${m.email}:\n${link}`);
-                    }}
-                    className="p-1 rounded text-[#6B7471] hover:text-[#1F5E4B] hover:bg-[#EAF3EF] transition ml-1"
-                    title="Copy direct join link"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                  </button>
-                )}
-
-                <button
-                  onClick={() => handleRemoveMember(m.id)}
-                  className="opacity-0 group-hover:opacity-100 text-[#6B7471] hover:text-[#C94A4A] transition ml-1"
-                  title="Remove Member"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Owner Badge */}
+            <div className="px-3 py-1.5 rounded-xl bg-[#EAF3EF] border border-[#1F5E4B]/20 flex items-center gap-2 text-xs">
+              <div className="w-6 h-6 rounded-full bg-[#1F5E4B] text-white font-bold flex items-center justify-center text-[10px]">
+                {project.user?.name?.charAt(0).toUpperCase() || 'O'}
               </div>
-            );
-          })}
+              <div>
+                <span className="font-bold text-[#202524] block leading-tight">{project.user?.name || 'Project Owner'}</span>
+                <span className="text-[10px] text-[#1F5E4B] font-mono font-bold">Owner (Creator)</span>
+              </div>
+            </div>
+
+            {/* Approved Members Badges */}
+            {members
+              .filter((m) => m.status === 'accepted')
+              .map((m) => (
+                <div
+                  key={m.id}
+                  className="px-3 py-1.5 rounded-xl border border-[#E2E6E4] bg-white flex items-center gap-2 text-xs group transition shadow-2xs"
+                >
+                  <div className="w-6 h-6 rounded-full bg-[#1F5E4B] text-white font-bold flex items-center justify-center text-[10px]">
+                    {(m.name || m.email).charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-[#202524] block leading-tight truncate max-w-[120px]">
+                        {m.name || m.email}
+                      </span>
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-[#F0F9F5] text-[#2E7D5B] border border-[#2E7D5B]/20">
+                        Active
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-[#6B7471] font-mono capitalize">{m.role || 'developer'}</span>
+                  </div>
+
+                  <button
+                    onClick={() => handleRemoveMember(m.id)}
+                    className="opacity-0 group-hover:opacity-100 text-[#6B7471] hover:text-[#C94A4A] transition ml-1"
+                    title="Remove Member"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+
+            {members.filter((m) => m.status === 'accepted').length === 0 && (
+              <span className="text-xs text-[#6B7471] italic font-mono">
+                No external members approved yet. Share the code above to invite your team!
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

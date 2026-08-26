@@ -105,9 +105,10 @@ export interface ProjectMember {
   projectId: string;
   userId?: string;
   user?: User;
+  name?: string;
   email: string;
   role: 'owner' | 'developer' | 'viewer';
-  status?: 'pending' | 'accepted';
+  status?: 'pending' | 'accepted' | 'rejected';
   inviteToken?: string;
   invitedAt?: string;
   acceptedAt?: string;
@@ -221,6 +222,7 @@ export interface Project {
   userId?: string;
   projectType: 'individual' | 'team';
   visibility: 'private' | 'public';
+  joinCode?: string;
   canvasConfig?: string;
   gitRepositoryUrl?: string;
   gitOwner?: string;

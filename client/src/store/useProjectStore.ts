@@ -33,9 +33,13 @@ interface ProjectState {
   removeModuleFromCurrentProject: (moduleId: string) => void;
   updateModulePosition: (moduleId: string, x: number, y: number) => void;
   exportProjectZip: (projectId: string) => Promise<void>;
-  fetchMembers: (projectId: string) => Promise<any[]>;
   inviteMember: (projectId: string, email: string, role?: string) => Promise<{ success: boolean; member?: any; inviteToken?: string; inviteLink?: string; gmailComposeUrl?: string; mailtoUrl?: string; previewUrl?: string; error?: string }>;
   removeMember: (projectId: string, memberId: string) => Promise<{ success: boolean; error?: string }>;
+  approveMember: (projectId: string, memberId: string) => Promise<{ success: boolean; member?: any; error?: string }>;
+  rejectMember: (projectId: string, memberId: string) => Promise<{ success: boolean; error?: string }>;
+  joinProjectByCode: (code: string, name: string, email: string) => Promise<{ success: boolean; status?: string; projectId?: string; message?: string; isOwner?: boolean; error?: string }>;
+  validateJoinCode: (code: string) => Promise<{ valid: boolean; project?: any; error?: string }>;
+  checkMemberStatus: (projectId: string, email: string) => Promise<{ status: string; role?: string; name?: string; error?: string }>;
   connectModuleRepo: (projectId: string, pmId: string, githubRepository: string, githubBranch?: string) => Promise<{ success: boolean; projectModule?: any; error?: string }>;
   syncProjectModule: (projectId: string, pmId: string) => Promise<{ success: boolean; projectModule?: any; deploymentUrl?: string; error?: string }>;
   redeployProjectModule: (projectId: string, pmId: string) => Promise<{ success: boolean; projectModule?: any; error?: string }>;
@@ -399,6 +403,75 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.message };
+    }
+  },
+
+  approveMember: async (projectId: string, memberId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/projects/${projectId}/members/${memberId}/approve`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to approve member');
+      return { success: true, member: data.member };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  },
+
+  rejectMember: async (projectId: string, memberId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/projects/${projectId}/members/${memberId}/reject`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to reject member');
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  },
+
+  joinProjectByCode: async (code: string, name: string, email: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/projects/join-by-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, name, email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to join project');
+      return {
+        success: true,
+        status: data.status,
+        projectId: data.projectId,
+        message: data.message,
+        isOwner: data.isOwner,
+      };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  },
+
+  validateJoinCode: async (code: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/projects/by-code/${encodeURIComponent(code.trim().toUpperCase())}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Invalid join code');
+      return { valid: true, project: data.project };
+    } catch (e: any) {
+      return { valid: false, error: e.message };
+    }
+  },
+
+  checkMemberStatus: async (projectId: string, email: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/projects/${projectId}/members/status?email=${encodeURIComponent(email)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to check status');
+      return { status: data.status, role: data.role, name: data.name };
+    } catch (e: any) {
+      return { status: 'unknown', error: e.message };
     }
   },
 

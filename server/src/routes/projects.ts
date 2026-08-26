@@ -59,12 +59,15 @@ projectsRouter.post('/', async (req, res) => {
       }
     }
 
+    const joinCode = `MF-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
     const project = await prisma.project.create({
       data: {
         name: name.trim(),
         description: description || '',
         projectType: projectType === 'team' ? 'team' : 'individual',
         visibility: visibility === 'public' ? 'public' : 'private',
+        joinCode,
         canvasConfig: JSON.stringify({ zoom: 1, pan: { x: 0, y: 0 } }),
         gitRepositoryUrl: gitRepositoryUrl ? gitRepositoryUrl.trim() : null,
         gitOwner: parsedOwner ? parsedOwner.trim() : null,
@@ -184,7 +187,7 @@ projectsRouter.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const project = await prisma.project.findUnique({
+    let project = await prisma.project.findUnique({
       where: { id },
       include: {
         modules: {
@@ -192,11 +195,35 @@ projectsRouter.get('/:id', async (req, res) => {
             module: true,
           },
         },
+        members: {
+          include: { user: true },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Auto-generate joinCode if not present
+    if (!project.joinCode) {
+      const joinCode = `MF-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+      project = await prisma.project.update({
+        where: { id },
+        data: { joinCode },
+        include: {
+          modules: {
+            include: {
+              module: true,
+            },
+          },
+          members: {
+            include: { user: true },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      });
     }
 
     res.json(project);
@@ -1424,6 +1451,251 @@ projectsRouter.post('/invites/accept', async (req, res) => {
       project: updatedMember.project,
       member: updatedMember,
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/projects/by-code/:code - Validate Join Code
+projectsRouter.get('/by-code/:code', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const cleanCode = code.trim().toUpperCase();
+
+    const project = await prisma.project.findFirst({
+      where: {
+        OR: [
+          { joinCode: cleanCode },
+          { id: code }
+        ]
+      },
+      include: {
+        user: true,
+        modules: { include: { module: true } },
+      }
+    });
+
+    if (!project) {
+      return res.status(404).json({ error: 'Invalid Team Join Code. Please check the code and try again.' });
+    }
+
+    res.json({
+      valid: true,
+      project: {
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        joinCode: project.joinCode,
+        ownerName: project.user?.name || 'Project Owner',
+        modulesCount: project.modules.length,
+        projectType: project.projectType,
+        visibility: project.visibility,
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/projects/join-by-code - Request to Join Team Project (Requires Owner Approval)
+projectsRouter.post('/join-by-code', async (req, res) => {
+  try {
+    const { code, name, email, role = 'developer' } = req.body;
+    if (!code || !email) {
+      return res.status(400).json({ error: 'Join code and email are required' });
+    }
+
+    const cleanCode = code.trim().toUpperCase();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name ? name.trim() : cleanEmail.split('@')[0];
+
+    const project = await prisma.project.findFirst({
+      where: {
+        OR: [
+          { joinCode: cleanCode },
+          { id: code }
+        ]
+      },
+      include: { user: true }
+    });
+
+    if (!project) {
+      return res.status(404).json({ error: 'Team project not found with this code' });
+    }
+
+    // Check if user is the project owner
+    if (project.user?.email && project.user.email.toLowerCase() === cleanEmail) {
+      return res.json({
+        success: true,
+        status: 'accepted',
+        isOwner: true,
+        projectId: project.id,
+        message: 'You are the project owner',
+      });
+    }
+
+    // Check if member record already exists
+    const existing = await prisma.projectMember.findFirst({
+      where: { projectId: project.id, email: cleanEmail }
+    });
+
+    let member;
+    if (existing) {
+      if (existing.status === 'accepted') {
+        return res.json({
+          success: true,
+          status: 'accepted',
+          projectId: project.id,
+          member: existing,
+          message: 'You are already an approved team member!',
+        });
+      }
+      // Update re-request
+      member = await prisma.projectMember.update({
+        where: { id: existing.id },
+        data: {
+          name: cleanName,
+          status: 'pending',
+          role,
+          invitedAt: new Date(),
+        }
+      });
+    } else {
+      const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
+      member = await prisma.projectMember.create({
+        data: {
+          projectId: project.id,
+          name: cleanName,
+          email: cleanEmail,
+          role,
+          status: 'pending',
+          userId: user?.id || null,
+        }
+      });
+    }
+
+    // Log Activity
+    await prisma.projectActivity.create({
+      data: {
+        projectId: project.id,
+        action: 'join_requested',
+        actorName: cleanName,
+        description: `${cleanName} (${cleanEmail}) requested to join the team (Pending approval)`,
+      }
+    });
+
+    // Realtime notification to project owner
+    realtimeEventManager.broadcastToProject(project.id, {
+      type: 'JOIN_REQUESTED',
+      author: cleanName,
+      message: `${cleanName} requested to join the project team!`,
+      status: 'pending',
+      memberId: member.id,
+    });
+
+    res.json({
+      success: true,
+      status: 'pending',
+      projectId: project.id,
+      member,
+      message: 'Join request submitted! Waiting for project owner approval.',
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/projects/:id/members/status - Check Member Approval Status
+projectsRouter.get('/:id/members/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email } = req.query;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'Email parameter is required' });
+    }
+
+    const member = await prisma.projectMember.findFirst({
+      where: { projectId: id, email: email.toLowerCase() }
+    });
+
+    if (!member) {
+      return res.status(404).json({ error: 'No join request found for this email' });
+    }
+
+    res.json({
+      status: member.status, // "pending" | "accepted" | "rejected"
+      role: member.role,
+      name: member.name,
+      acceptedAt: member.acceptedAt,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/projects/:id/members/:memberId/approve - Owner Approves Team Member
+projectsRouter.post('/:id/members/:memberId/approve', async (req, res) => {
+  try {
+    const { id, memberId } = req.params;
+
+    const member = await prisma.projectMember.update({
+      where: { id: memberId },
+      data: {
+        status: 'accepted',
+        acceptedAt: new Date(),
+      },
+      include: { project: true, user: true }
+    });
+
+    const displayName = member.name || member.email.split('@')[0];
+
+    // Log Activity
+    await prisma.projectActivity.create({
+      data: {
+        projectId: id,
+        action: 'member_approved',
+        actorName: 'Project Owner',
+        description: `Project owner approved ${displayName} (${member.email}) as team ${member.role}`,
+      }
+    });
+
+    // Realtime broadcast
+    realtimeEventManager.broadcastToProject(id, {
+      type: 'MEMBER_APPROVED',
+      author: displayName,
+      message: `${displayName} has been approved to collaborate!`,
+      status: 'synced',
+      memberId: member.id,
+    });
+
+    res.json({ success: true, member });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/projects/:id/members/:memberId/reject - Owner Rejects Team Member
+projectsRouter.post('/:id/members/:memberId/reject', async (req, res) => {
+  try {
+    const { id, memberId } = req.params;
+
+    const member = await prisma.projectMember.update({
+      where: { id: memberId },
+      data: {
+        status: 'rejected',
+      }
+    });
+
+    // Realtime broadcast
+    realtimeEventManager.broadcastToProject(id, {
+      type: 'MEMBER_REJECTED',
+      author: 'Project Owner',
+      message: `Join request for ${member.email} was rejected`,
+      status: 'rejected',
+      memberId: member.id,
+    });
+
+    res.json({ success: true, message: 'Member request rejected' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

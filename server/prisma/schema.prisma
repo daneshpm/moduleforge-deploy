@@ -118,6 +118,7 @@ model Project {
   user             User?             @relation("UserProjects", fields: [userId], references: [id])
   projectType      String            @default("individual") // "individual" | "team"
   visibility       String            @default("private")    // "private" | "public"
+  joinCode         String?           @unique                // e.g. "MF-8A2F1C"
   canvasConfig     String?           // JSON string of canvas state (zoom, pan, etc)
   gitRepositoryUrl String?
   gitOwner         String?
@@ -134,6 +135,7 @@ model Project {
   exports          GeneratedExport[]
 
   @@index([userId])
+  @@index([joinCode])
 }
 
 model ProjectMember {
@@ -142,9 +144,10 @@ model ProjectMember {
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   userId      String?
   user        User?     @relation(fields: [userId], references: [id])
+  name        String?
   email       String
   role        String    @default("developer") // "owner" | "developer" | "viewer"
-  status      String    @default("pending")   // "pending" | "accepted"
+  status      String    @default("pending")   // "pending" | "accepted" | "rejected"
   inviteToken String?   @unique
   invitedAt   DateTime  @default(now())
   acceptedAt  DateTime?

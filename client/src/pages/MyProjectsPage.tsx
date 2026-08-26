@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FolderGit2, Download, Trash2, Plus, Terminal, Clock, Users, User, Lock, Globe, Github, Crown, X } from 'lucide-react';
+import { FolderGit2, Download, Trash2, Plus, Terminal, Clock, Users, User, Lock, Globe, Github, Crown, X, Copy, Check, Link2, ShieldCheck } from 'lucide-react';
 import { useProjectStore } from '../store/useProjectStore';
 import { Project } from '../types';
 import { ExportProjectModal } from '../components/ExportProjectModal';
@@ -19,6 +19,7 @@ export const MyProjectsPage: React.FC<MyProjectsPageProps> = ({ onOpenCreateProj
   const [projectType, setProjectType] = useState<'individual' | 'team'>('individual');
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [selectedExportProject, setSelectedExportProject] = useState<Project | null>(null);
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   
   const [teamRepos, setTeamRepos] = useState<Array<{ name: string; category?: string; githubRepository: string; branch?: string }>>([]);
 
@@ -145,6 +146,40 @@ export const MyProjectsPage: React.FC<MyProjectsPageProps> = ({ onOpenCreateProj
                   <p className="text-xs text-[#6B7471] line-clamp-2 leading-relaxed">
                     {project.description || 'Custom software composition'}
                   </p>
+
+                  {/* Team Project Join Code Banner */}
+                  {isTeam && project.joinCode && (
+                    <div className="p-2.5 rounded-xl bg-[#EAF3EF] border border-[#1F5E4B]/20 flex items-center justify-between gap-2 font-mono text-xs">
+                      <div className="flex items-center gap-1.5 overflow-hidden">
+                        <ShieldCheck className="w-3.5 h-3.5 text-[#1F5E4B] shrink-0" />
+                        <span className="text-[10px] text-[#6B7471] uppercase font-bold">Join Code:</span>
+                        <span className="text-[#1F5E4B] font-black tracking-wide">{project.joinCode}</span>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const joinUrl = `${window.location.origin}/join-project?code=${project.joinCode}`;
+                          navigator.clipboard.writeText(joinUrl);
+                          setCopiedCodeId(project.id);
+                          setTimeout(() => setCopiedCodeId(null), 2000);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-white hover:bg-[#1F5E4B] text-[#1F5E4B] hover:text-white border border-[#1F5E4B]/20 text-[10px] font-bold flex items-center gap-1 transition shadow-2xs shrink-0"
+                        title="Copy direct join link to share with team members"
+                      >
+                        {copiedCodeId === project.id ? (
+                          <>
+                            <Check className="w-3 h-3 text-[#2E7D5B]" />
+                            <span>Copied Link!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy Join Link</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-4 border-t border-[#E2E6E4] space-y-3">
@@ -219,7 +254,7 @@ export const MyProjectsPage: React.FC<MyProjectsPageProps> = ({ onOpenCreateProj
                     type="text"
                     value={newProjectName}
                     onChange={(e) => setNewProjectName(e.target.value)}
-                    placeholder="e.g. My Business Application"
+                    placeholder="e.g. Enterprise Business App"
                     className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl px-3.5 py-2.5 text-xs text-[#202524] placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B] focus:ring-2 focus:ring-[#1F5E4B]/15"
                     required
                   />
@@ -230,76 +265,97 @@ export const MyProjectsPage: React.FC<MyProjectsPageProps> = ({ onOpenCreateProj
                   <textarea
                     value={newProjectDesc}
                     onChange={(e) => setNewProjectDesc(e.target.value)}
-                    placeholder="Integrated multi-module enterprise platform..."
+                    placeholder="Describe your multi-module application composition..."
                     className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl px-3.5 py-2 text-xs text-[#202524] placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B] focus:ring-2 focus:ring-[#1F5E4B]/15 h-20"
                   />
                 </div>
               </div>
 
-              {/* Project Type & Visibility Selectors */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-[#202524]">Project Mode</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setProjectType('individual')}
-                      className={`p-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition ${
-                        projectType === 'individual'
-                          ? 'bg-[#EAF3EF] border-[#1F5E4B] text-[#1F5E4B] shadow-xs'
-                          : 'bg-[#F7F8F7] border-[#E2E6E4] text-[#6B7471] hover:text-[#202524]'
-                      }`}
-                    >
-                      <User className="w-4 h-4 text-[#1F5E4B]" />
-                      <span>Individual</span>
-                    </button>
+              {/* Project Type Selectors */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-[#202524]">Project Mode</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProjectType('individual');
+                      setVisibility('private');
+                    }}
+                    className={`p-3.5 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition ${
+                      projectType === 'individual'
+                        ? 'bg-[#EAF3EF] border-[#1F5E4B] text-[#1F5E4B] shadow-xs'
+                        : 'bg-[#F7F8F7] border-[#E2E6E4] text-[#6B7471] hover:text-[#202524]'
+                    }`}
+                  >
+                    <User className="w-5 h-5 text-[#1F5E4B]" />
+                    <span className="font-bold">Individual Project</span>
+                    <span className="text-[10px] font-normal text-[#6B7471] text-center">Personal workspace for your individual modules</span>
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setProjectType('team')}
-                      className={`p-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition ${
-                        projectType === 'team'
-                          ? 'bg-[#EAF3EF] border-[#1F5E4B] text-[#1F5E4B] shadow-xs'
-                          : 'bg-[#F7F8F7] border-[#E2E6E4] text-[#6B7471] hover:text-[#202524]'
-                      }`}
-                    >
-                      <Users className="w-4 h-4 text-[#1F5E4B]" />
-                      <span>Team Project</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setProjectType('team')}
+                    className={`p-3.5 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition ${
+                      projectType === 'team'
+                        ? 'bg-[#EAF3EF] border-[#1F5E4B] text-[#1F5E4B] shadow-xs'
+                        : 'bg-[#F7F8F7] border-[#E2E6E4] text-[#6B7471] hover:text-[#202524]'
+                    }`}
+                  >
+                    <Users className="w-5 h-5 text-[#1F5E4B]" />
+                    <span className="font-bold">Team Project</span>
+                    <span className="text-[10px] font-normal text-[#6B7471] text-center">Generates Join Code & Link with Owner Approval</span>
+                  </button>
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-[#202524]">Visibility</label>
+              {/* Individual Visibility Controls */}
+              {projectType === 'individual' ? (
+                <div className="space-y-2 p-3.5 rounded-2xl bg-[#F7F8F7] border border-[#E2E6E4]">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-[#202524]">Individual Visibility</label>
+                    <span className="text-[10px] font-mono text-[#1F5E4B] font-bold">
+                      {visibility === 'private' ? 'Private to You' : 'Public Showcase'}
+                    </span>
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => setVisibility('private')}
-                      className={`p-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition ${
+                      className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
                         visibility === 'private'
-                          ? 'bg-[#EAF3EF] border-[#1F5E4B] text-[#1F5E4B] shadow-xs'
-                          : 'bg-[#F7F8F7] border-[#E2E6E4] text-[#6B7471] hover:text-[#202524]'
+                          ? 'bg-white border-[#1F5E4B] text-[#1F5E4B] shadow-xs font-bold'
+                          : 'bg-[#F7F8F7] border-transparent text-[#6B7471]'
                       }`}
                     >
-                      <Lock className="w-4 h-4 text-[#1F5E4B]" />
-                      <span>Private</span>
+                      <Lock className="w-3.5 h-3.5 text-[#1F5E4B]" />
+                      <span>Private (Individual Only)</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setVisibility('public')}
-                      className={`p-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition ${
+                      className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
                         visibility === 'public'
-                          ? 'bg-[#F0F9F5] border-[#2E7D5B] text-[#2E7D5B] shadow-xs'
-                          : 'bg-[#F7F8F7] border-[#E2E6E4] text-[#6B7471] hover:text-[#202524]'
+                          ? 'bg-white border-[#2E7D5B] text-[#2E7D5B] shadow-xs font-bold'
+                          : 'bg-[#F7F8F7] border-transparent text-[#6B7471]'
                       }`}
                     >
-                      <Globe className="w-4 h-4 text-[#2E7D5B]" />
-                      <span>Public</span>
+                      <Globe className="w-3.5 h-3.5 text-[#2E7D5B]" />
+                      <span>Public (Gallery)</span>
                     </button>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-[#EAF3EF] border border-[#1F5E4B]/20 text-xs space-y-1.5">
+                  <div className="flex items-center gap-2 text-[#1F5E4B] font-bold">
+                    <ShieldCheck className="w-4 h-4 text-[#1F5E4B]" />
+                    <span>Team Join Link & Approval Protection</span>
+                  </div>
+                  <p className="text-[11px] text-[#6B7471] leading-relaxed">
+                    A unique <strong>Team Join Code & Link</strong> will be generated. When team members request to join, you will review and approve them in the dashboard before they can collaborate.
+                  </p>
+                </div>
+              )}
 
               {/* Team Repositories Configurator */}
               {projectType === 'team' && (
