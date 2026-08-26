@@ -9,10 +9,11 @@ import { realtimeEventManager } from '../services/realtimeEvents';
 
 export const webhooksRouter = Router();
 
-const storageDir = path.join(__dirname, '..', '..', 'uploads');
-if (!fs.existsSync(storageDir)) {
-  fs.mkdirSync(storageDir, { recursive: true });
-}
+const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+const storageDir = isVercel
+  ? path.join('/tmp', 'uploads')
+  : path.join(__dirname, '..', '..', 'uploads');
+try { fs.mkdirSync(storageDir, { recursive: true }); } catch (_) {}
 
 // Verify GitHub Webhook Signature using GITHUB_WEBHOOK_SECRET
 function verifyGitHubSignature(

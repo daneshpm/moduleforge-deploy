@@ -16,8 +16,12 @@ import {
 
 export const modulesRouter = Router();
 
-const storageDir = path.join(__dirname, '..', '..', 'uploads');
-fs.mkdirSync(storageDir, { recursive: true });
+// On Vercel the filesystem outside /tmp is read-only — use /tmp in production
+const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+const storageDir = isVercel
+  ? path.join('/tmp', 'uploads')
+  : path.join(__dirname, '..', '..', 'uploads');
+try { fs.mkdirSync(storageDir, { recursive: true }); } catch (_) {}
 
 const upload = multer({
   dest: storageDir,
