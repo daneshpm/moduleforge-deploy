@@ -25,9 +25,13 @@ app.use(
     origin: isDev
       ? true // allow all in dev
       : (origin, callback) => {
-          // allow requests with no origin (curl, Vercel internal, webhooks)
+          // allow requests with no origin (curl, Vercel internal, webhooks, same-origin)
           if (!origin) return callback(null, true);
+          // On Vercel the frontend and API are on the same domain — always allow same origin
+          if (allowedOrigins.length === 0) return callback(null, true);
           if (allowedOrigins.includes(origin)) return callback(null, true);
+          // Also allow any vercel.app subdomain of this project (preview deployments)
+          if (origin.endsWith('.vercel.app')) return callback(null, true);
           callback(new Error(`CORS: origin "${origin}" not allowed`));
         },
     credentials: true,
