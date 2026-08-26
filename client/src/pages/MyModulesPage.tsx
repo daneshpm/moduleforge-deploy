@@ -169,7 +169,7 @@ export const MyModulesPage: React.FC = () => {
                         title={mod.deployedUrl}
                       >
                         <span className="w-1.5 h-1.5 rounded-full bg-[#2E7D5B] animate-pulse" />
-                        <span>Live Website</span>
+                        <span>Preview Module</span>
                         <ExternalLink className="w-3 h-3" />
                       </a>
                     ) : (

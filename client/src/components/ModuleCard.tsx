@@ -137,7 +137,7 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({ module, onAddToProject, 
         </div>
 
         <div className="flex items-center gap-2">
-          {/* View Live Website Button */}
+          {/* Preview Module Button */}
           {module.deployedUrl && (
             <a
               href={module.deployedUrl}
@@ -145,9 +145,9 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({ module, onAddToProject, 
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
               className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#EAF3EF] hover:bg-[#1F5E4B] text-[#1F5E4B] hover:text-white border border-[#1F5E4B]/20 transition flex items-center gap-1 shadow-xs"
-              title={`Open live deployed website: ${module.deployedUrl}`}
+              title={`Preview deployed module: ${module.deployedUrl}`}
             >
-              <span>View Live Website</span>
+              <span>Preview Module</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           )}

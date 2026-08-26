@@ -232,10 +232,10 @@ export const ModuleDetailsPage: React.FC = () => {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2.5 rounded-xl bg-[#EAF3EF] hover:bg-[#1F5E4B] text-[#1F5E4B] hover:text-white font-bold text-xs border border-[#1F5E4B]/20 shadow-xs flex items-center gap-2 transition"
-                title={`Open live deployed website: ${module.deployedUrl}`}
+                title={`Preview deployed module: ${module.deployedUrl}`}
               >
                 <Globe className="w-4 h-4" />
-                <span>View Live Website</span>
+                <span>Preview Module</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             )}
