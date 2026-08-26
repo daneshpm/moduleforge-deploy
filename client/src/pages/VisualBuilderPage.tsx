@@ -24,6 +24,7 @@ import {
   History,
   Bot,
   Send,
+  Globe,
 } from 'lucide-react';
 import { useProjectStore } from '../store/useProjectStore';
 import { useModuleStore } from '../store/useModuleStore';
@@ -422,21 +423,45 @@ export const VisualBuilderPage: React.FC = () => {
                         {mod?.description}
                       </p>
 
-                      {/* Microservice Port & View Button */}
-                      <div className="pt-3 border-t border-[#E2E6E4] flex items-center justify-between text-[10px] font-mono">
+                      {/* Deployed Status Indicator */}
+                      {mod?.deployedUrl && (
+                        <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#2E7D5B] font-bold mb-2.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#2E7D5B] animate-pulse" />
+                          <span>● Deployed</span>
+                        </div>
+                      )}
+
+                      {/* Microservice Port & Action Buttons */}
+                      <div className="pt-3 border-t border-[#E2E6E4] flex items-center justify-between gap-2 text-[10px] font-mono">
                         <span className="px-2 py-0.5 rounded bg-[#F7F8F7] text-[#6B7471] border border-[#E2E6E4]">
                           Port: {4567 + idx}
                         </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            startLocalModule(currentProject.id, pm.id);
-                          }}
-                          className="px-3 py-1 rounded-lg bg-[#1F5E4B] hover:bg-[#174739] text-white font-bold text-[10px] flex items-center gap-1 transition shadow-xs"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          <span>View (Run)</span>
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          {mod?.deployedUrl && (
+                            <a
+                              href={mod.deployedUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="px-2.5 py-1 rounded-lg bg-[#EAF3EF] hover:bg-[#1F5E4B] text-[#1F5E4B] hover:text-white font-bold text-[10px] flex items-center gap-1 transition border border-[#1F5E4B]/20 shadow-xs"
+                              title={`Open live deployed website: ${mod.deployedUrl}`}
+                            >
+                              <Globe className="w-3 h-3" />
+                              <span>View Live</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startLocalModule(currentProject.id, pm.id);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-[#1F5E4B] hover:bg-[#174739] text-white font-bold text-[10px] flex items-center gap-1 transition shadow-xs"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            <span>Run Local</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -542,6 +567,31 @@ export const VisualBuilderPage: React.FC = () => {
                       <span className="text-[#6B7471] font-semibold">{selectedProjectModule.module?.sourceType}</span>
                     </div>
                   </div>
+
+                  {/* Deployed Live Website in Inspector */}
+                  {(selectedProjectModule.module?.deployedUrl || modules.find((m) => m.id === selectedProjectModule.moduleId)?.deployedUrl) && (
+                    <div className="p-3.5 rounded-xl bg-[#EAF3EF] border border-[#1F5E4B]/20 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-mono font-bold text-[#1F5E4B] flex items-center gap-1">
+                          <Globe className="w-3.5 h-3.5" />
+                          <span>Live Deployed Link</span>
+                        </span>
+                        <span className="w-2 h-2 rounded-full bg-[#2E7D5B] animate-pulse" />
+                      </div>
+                      <p className="text-xs font-mono text-[#202524] truncate font-semibold">
+                        {selectedProjectModule.module?.deployedUrl || modules.find((m) => m.id === selectedProjectModule.moduleId)?.deployedUrl}
+                      </p>
+                      <a
+                        href={selectedProjectModule.module?.deployedUrl || modules.find((m) => m.id === selectedProjectModule.moduleId)?.deployedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-1.5 rounded-lg bg-[#1F5E4B] hover:bg-[#174739] text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-xs"
+                      >
+                        <span>View Live Website</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  )}
 
                   {/* Git Repository & Branch */}
                   <div className="p-3.5 rounded-xl bg-[#F7F8F7] border border-[#E2E6E4] space-y-2 font-mono text-xs">

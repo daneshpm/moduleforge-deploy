@@ -15,17 +15,11 @@ export const MyProjectsPage: React.FC<MyProjectsPageProps> = ({ onOpenCreateProj
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
-  const [newProjectDesc, setNewProjectDesc] = useState('');
-  const [projectType, setProjectType] = useState<'individual' | 'team'>('team');
+  const [projectType, setProjectType] = useState<'individual' | 'team'>('individual');
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [selectedExportProject, setSelectedExportProject] = useState<Project | null>(null);
   
-  const [teamRepos, setTeamRepos] = useState([
-    { name: 'CRM', category: 'CRM', githubRepository: 'company/crm' },
-    { name: 'Books', category: 'Accounting', githubRepository: 'company/books' },
-    { name: 'Inventory', category: 'Inventory', githubRepository: 'company/inventory' },
-    { name: 'Payments', category: 'Payments', githubRepository: 'company/payments' },
-  ]);
+  const [teamRepos, setTeamRepos] = useState<Array<{ name: string; category?: string; githubRepository: string; branch?: string }>>([]);
 
   useEffect(() => {
     fetchProjects();

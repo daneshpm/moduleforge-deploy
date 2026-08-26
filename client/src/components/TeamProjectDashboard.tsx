@@ -15,6 +15,7 @@ import {
   AlertCircle,
   Download,
   X,
+  Globe,
 } from 'lucide-react';
 import { Project, ProjectMember, ProjectActivity, ModuleDeployment, ProjectModule } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
@@ -480,6 +481,21 @@ export const TeamProjectDashboard: React.FC<TeamProjectDashboardProps> = ({ proj
 
                 {/* Module Action Controls */}
                 <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {/* View Live Website Button (Conditional) */}
+                  {pm.module?.deployedUrl && (
+                    <a
+                      href={pm.module.deployedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3.5 py-2 rounded-xl bg-[#EAF3EF] hover:bg-[#1F5E4B] text-[#1F5E4B] hover:text-white border border-[#1F5E4B]/20 text-xs font-bold flex items-center gap-1.5 transition shadow-xs"
+                      title={`Open live deployed website: ${pm.module.deployedUrl}`}
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                      <span>View Live Website</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+
                   {/* Primary View / Launch Button */}
                   <button
                     onClick={() => handleStartModule(pm.id)}
