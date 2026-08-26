@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "node_modules/.bin/prisma generate --schema=server/prisma/schema.prisma && npm install --prefix client && npm run build --prefix client",
+  "buildCommand": "node scripts/vercel-build.js",
   "outputDirectory": "client/dist",
   "installCommand": "npm install",
   "framework": null,
