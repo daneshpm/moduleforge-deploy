@@ -496,20 +496,6 @@ export const TeamProjectDashboard: React.FC<TeamProjectDashboardProps> = ({ proj
                     </a>
                   )}
 
-                  {/* Primary View / Launch Button */}
-                  <button
-                    onClick={() => handleStartModule(pm.id)}
-                    disabled={isStartingLocally}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs ${
-                      isRunningLocally
-                        ? 'bg-[#2E7D5B] hover:bg-[#246549] text-white shadow-[#2E7D5B]/20'
-                        : 'bg-[#1F5E4B] hover:bg-[#174739] text-white shadow-[#1F5E4B]/20'
-                    }`}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>{isStartingLocally ? 'Starting...' : isRunningLocally ? 'Open Browser' : 'View (Run)'}</span>
-                  </button>
-
                   {/* Sync Now Button */}
                   <button
                     onClick={async () => {

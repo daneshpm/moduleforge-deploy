@@ -372,17 +372,6 @@ export const ModuleDetailsPage: React.FC = () => {
           Specifications & Schema
         </button>
         <button
-          onClick={() => setActiveTab('ai')}
-          className={`pb-3 transition relative flex items-center gap-1.5 ${
-            activeTab === 'ai'
-              ? 'text-[#1F5E4B] border-b-2 border-[#1F5E4B] font-bold'
-              : 'text-[#6B7471] hover:text-[#202524]'
-          }`}
-        >
-          <Sparkles className="w-4 h-4 text-[#1F5E4B]" />
-          <span>AI Agent Instructions</span>
-        </button>
-        <button
           onClick={() => setActiveTab('files')}
           className={`pb-3 transition relative ${
             activeTab === 'files'
@@ -439,18 +428,6 @@ export const ModuleDetailsPage: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {activeTab === 'ai' && (
-        <div className="p-6 rounded-3xl bg-[#EAF3EF] border border-[#1F5E4B]/20 space-y-4 shadow-sm">
-          <div className="flex items-center gap-2 text-[#1F5E4B] font-bold text-base">
-            <Sparkles className="w-5 h-5 text-[#1F5E4B]" />
-            <span>AI Coding Agent Integration Guide (`description_for_ai`)</span>
-          </div>
-          <p className="text-xs text-[#202524] leading-relaxed font-mono bg-white p-4 rounded-2xl border border-[#E2E6E4]">
-            {parsed?.description_for_ai || 'No specific description_for_ai provided. Coding agents will analyze module entry points and schemas.'}
-          </p>
         </div>
       )}
 

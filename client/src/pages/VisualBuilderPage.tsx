@@ -431,106 +431,31 @@ export const VisualBuilderPage: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Microservice Port & Action Buttons */}
+                      {/* Deployed Status Indicator & Action */}
                       <div className="pt-3 border-t border-[#E2E6E4] flex items-center justify-between gap-2 text-[10px] font-mono">
                         <span className="px-2 py-0.5 rounded bg-[#F7F8F7] text-[#6B7471] border border-[#E2E6E4]">
                           Port: {4567 + idx}
                         </span>
-                        <div className="flex items-center gap-1.5">
-                          {mod?.deployedUrl && (
-                            <a
-                              href={mod.deployedUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="px-2.5 py-1 rounded-lg bg-[#EAF3EF] hover:bg-[#1F5E4B] text-[#1F5E4B] hover:text-white font-bold text-[10px] flex items-center gap-1 transition border border-[#1F5E4B]/20 shadow-xs"
-                              title={`Open live deployed website: ${mod.deployedUrl}`}
-                            >
-                              <Globe className="w-3 h-3" />
-                              <span>View Live</span>
-                              <ExternalLink className="w-2.5 h-2.5" />
-                            </a>
-                          )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              startLocalModule(currentProject.id, pm.id);
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-[#1F5E4B] hover:bg-[#174739] text-white font-bold text-[10px] flex items-center gap-1 transition shadow-xs"
+                        {mod?.deployedUrl && (
+                          <a
+                            href={mod.deployedUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="px-3 py-1.5 rounded-xl bg-[#EAF3EF] hover:bg-[#1F5E4B] text-[#1F5E4B] hover:text-white font-bold text-xs flex items-center gap-1.5 transition border border-[#1F5E4B]/20 shadow-xs"
+                            title={`Open live deployed website: ${mod.deployedUrl}`}
                           >
+                            <Globe className="w-3.5 h-3.5" />
+                            <span>View Live Website</span>
                             <ExternalLink className="w-3 h-3" />
-                            <span>Run Local</span>
-                          </button>
-                        </div>
+                          </a>
+                        )}
                       </div>
                     </div>
                   );
                 })}
               </div>
             )}
-
-            {/* Floating AI Copilot Prompt Bar */}
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-20">
-              <div className="bg-white/95 border border-[#E2E6E4] rounded-3xl p-3 shadow-2xl backdrop-blur-2xl space-y-2.5 ai-glow-border">
-                {/* Quick AI Suggestions Chips */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-1 text-[11px] font-mono text-[#6B7471] scrollbar-none">
-                  <span className="text-[#1F5E4B] font-bold shrink-0 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-[#1F5E4B]" />
-                    <span>AI Suggestions:</span>
-                  </span>
-                  <button
-                    onClick={() => handleAiAction('auto-align layout')}
-                    className="px-2.5 py-1 rounded-full bg-[#F7F8F7] hover:bg-[#EAF3EF] hover:text-[#1F5E4B] border border-[#E2E6E4] shrink-0 transition font-semibold"
-                  >
-                    ⚡ Auto-Align Topology
-                  </button>
-                  <button
-                    onClick={() => handleAiAction('add authentication module')}
-                    className="px-2.5 py-1 rounded-full bg-[#F7F8F7] hover:bg-[#EAF3EF] hover:text-[#1F5E4B] border border-[#E2E6E4] shrink-0 transition font-semibold"
-                  >
-                    + Add Auth Layer
-                  </button>
-                  <button
-                    onClick={() => handleAiAction('connect crm and payments')}
-                    className="px-2.5 py-1 rounded-full bg-[#F7F8F7] hover:bg-[#EAF3EF] hover:text-[#1F5E4B] border border-[#E2E6E4] shrink-0 transition font-semibold"
-                  >
-                    + Link CRM & Payments
-                  </button>
-                </div>
-
-                {/* Prompt Input Form */}
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleAiAction();
-                  }}
-                  className="flex items-center gap-2 bg-[#F7F8F7] p-1.5 rounded-2xl border border-[#E2E6E4]"
-                >
-                  <Bot className="w-4 h-4 text-[#1F5E4B] ml-2.5 shrink-0" />
-                  <input
-                    type="text"
-                    value={aiPromptInput}
-                    onChange={(e) => setAiPromptInput(e.target.value)}
-                    placeholder="Ask AI Architect to compose, align, or generate API mesh..."
-                    className="bg-transparent text-xs text-[#202524] placeholder-[#6B7471] w-full focus:outline-none px-2 font-medium"
-                  />
-                  <button
-                    type="submit"
-                    disabled={isAiThinking || !aiPromptInput.trim()}
-                    className="px-3.5 py-1.5 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] text-white font-bold text-xs shrink-0 transition flex items-center gap-1 shadow-md shadow-[#1F5E4B]/20 disabled:opacity-50"
-                  >
-                    {isAiThinking ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <>
-                        <span>Generate</span>
-                        <Send className="w-3 h-3" />
-                      </>
-                    )}
-                  </button>
-                </form>
-              </div>
-            </div>
           </main>
 
           {/* COLUMN 3: RIGHT CONFIGURATION INSPECTOR */}
