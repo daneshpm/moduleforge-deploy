@@ -15,6 +15,7 @@ export const MyProjectsPage: React.FC<MyProjectsPageProps> = ({ onOpenCreateProj
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectDesc, setNewProjectDesc] = useState('');
   const [projectType, setProjectType] = useState<'individual' | 'team'>('individual');
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [selectedExportProject, setSelectedExportProject] = useState<Project | null>(null);
