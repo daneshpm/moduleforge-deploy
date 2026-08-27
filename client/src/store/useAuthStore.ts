@@ -186,6 +186,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/dashboard`,
+          queryParams: {
+            prompt: 'select_account', // always show Google account picker
+            access_type: 'offline',
+          },
         },
       });
 
@@ -196,22 +200,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return { success: true };
     }
 
-    // Dev fallback Google login
-    return get().loginWithGoogleDev('shalya@example.com', 'Shalya Gaonkar');
+    // Dev fallback — no Supabase configured, use dev auth endpoint
+    return get().loginWithGoogleDev();
   },
 
   // ── Dev Google Login Simulation ──────────────────────────────────────────
   loginWithGoogleDev: async (
-    email = 'shalya@example.com',
-    name = 'Shalya Gaonkar',
-    avatarUrl = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
+    email?: string,
+    name?: string,
+    avatarUrl?: string
   ) => {
     set({ isLoading: true, error: null });
+
+    // If no credentials provided (dev fallback with no Supabase), prompt user
+    const devEmail = email || window.prompt('Dev mode: Enter your email to simulate Google login') || '';
+    if (!devEmail) {
+      set({ isLoading: false });
+      return { success: false, error: 'No email provided' };
+    }
+    const devName = name || devEmail.split('@')[0];
+
     try {
       const res = await fetch(`${API_BASE}/auth/google-dev`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, avatarUrl }),
+        body: JSON.stringify({ email: devEmail, name: devName, avatarUrl }),
       });
 
       const data = await res.json();
