@@ -1,7 +1,7 @@
 import { Response } from 'express';
 
 export interface RealtimeProjectEvent {
-  type: 'MODULE_UPDATED' | 'ACTIVITY_CREATED' | 'PROJECT_SYNCED' | 'ROLLBACK_COMPLETED' | 'MEMBER_JOINED';
+  type: 'MODULE_UPDATED' | 'ACTIVITY_CREATED' | 'PROJECT_SYNCED' | 'ROLLBACK_COMPLETED' | 'MEMBER_JOINED' | 'JOIN_REQUESTED' | 'MEMBER_APPROVED' | 'MEMBER_REJECTED';
   projectId: string;
   moduleId?: string;
   moduleName?: string;
