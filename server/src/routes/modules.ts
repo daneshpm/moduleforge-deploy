@@ -974,10 +974,9 @@ modulesRouter.get('/:id/webhook-status', async (req, res) => {
 modulesRouter.post('/:id/register-webhook', async (req, res) => {
   try {
     const { id } = req.params;
-    // Allow client to pass their own token (from Settings page)
+    // Allow client to pass their own token from the Settings page
+    // We pass it as overrides rather than mutating process.env (which is global and unsafe in serverless)
     const { githubToken, webhookSecret } = req.body || {};
-    if (githubToken) process.env.GITHUB_TOKEN = githubToken;
-    if (webhookSecret) process.env.GITHUB_WEBHOOK_SECRET = webhookSecret;
 
     const module = await prisma.module.findFirst({
       where: { OR: [{ id }, { slug: id }] },
@@ -991,7 +990,7 @@ modulesRouter.post('/:id/register-webhook', async (req, res) => {
       return res.status(400).json({ error: 'Module must be linked to a GitHub repository' });
     }
 
-    const result = await registerWebhook(module.id);
+    const result = await registerWebhook(module.id, { githubToken, webhookSecret });
 
     if (!result.success) {
       return res.status(400).json({ error: result.error });

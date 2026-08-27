@@ -16,13 +16,13 @@ export function getWebhookUrl(): string {
 
 /**
  * Returns Axios headers with the GitHub personal access token.
- * Throws if GITHUB_TOKEN is not configured.
+ * Accepts an optional override token (from client Settings page).
  */
-function githubHeaders(): Record<string, string> {
-  const token = process.env.GITHUB_TOKEN;
+function githubHeaders(tokenOverride?: string): Record<string, string> {
+  const token = tokenOverride || process.env.GITHUB_TOKEN;
   if (!token) {
     throw new Error(
-      'GITHUB_TOKEN is not set. Add it to your .env file to enable automatic webhook registration.'
+      'GITHUB_TOKEN is not set. Add it in Settings → GitHub Integration or set it in Vercel environment variables.'
     );
   }
   return {
@@ -38,12 +38,13 @@ function githubHeaders(): Record<string, string> {
  */
 export async function listRepoWebhooks(
   owner: string,
-  repo: string
+  repo: string,
+  tokenOverride?: string
 ): Promise<any[]> {
   try {
     const res = await axios.get(
       `${GITHUB_API}/repos/${owner}/${repo}/hooks`,
-      { headers: githubHeaders(), timeout: 10000 }
+      { headers: githubHeaders(tokenOverride), timeout: 10000 }
     );
     return res.data || [];
   } catch (e: any) {
@@ -58,7 +59,10 @@ export async function listRepoWebhooks(
  * - Skips registration if a ModuleForge webhook is already active on GitHub.
  * - Updates `githubWebhookId` on the Module record in the DB after success.
  */
-export async function registerWebhook(moduleId: string): Promise<{
+export async function registerWebhook(
+  moduleId: string,
+  overrides?: { githubToken?: string; webhookSecret?: string }
+): Promise<{
   success: boolean;
   webhookId?: string;
   webhookUrl?: string;
@@ -75,12 +79,12 @@ export async function registerWebhook(moduleId: string): Promise<{
   const owner = module.githubOwner;
   const repo = module.githubRepo;
   const webhookUrl = getWebhookUrl();
-  const secret =
-    process.env.GITHUB_WEBHOOK_SECRET || 'moduleforge_webhook_secret';
+  const tokenOverride = overrides?.githubToken;
+  const secret = overrides?.webhookSecret || process.env.GITHUB_WEBHOOK_SECRET || 'moduleforge_webhook_secret';
 
   try {
     // Check for an existing ModuleForge webhook on this repo to avoid duplicates
-    const existing = await listRepoWebhooks(owner, repo);
+    const existing = await listRepoWebhooks(owner, repo, tokenOverride);
     const alreadyExists = existing.find(
       (h: any) =>
         h.config?.url === webhookUrl && h.active === true
@@ -116,7 +120,7 @@ export async function registerWebhook(moduleId: string): Promise<{
           insecure_ssl: '0',
         },
       },
-      { headers: githubHeaders(), timeout: 10000 }
+      { headers: githubHeaders(tokenOverride), timeout: 10000 }
     );
 
     const webhookId = String(res.data.id);
