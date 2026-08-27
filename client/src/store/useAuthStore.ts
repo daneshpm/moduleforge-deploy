@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { User } from '../types';
+import { firebaseAuth, googleProvider, isFirebaseConfigured } from '../firebase';
+import { signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
 
 const API_BASE = '/api';
 
@@ -103,7 +105,7 @@ interface AuthState {
   logout: () => Promise<void>;
 }
 
-const isLocalAuthFallback = !(
+const isLocalAuthFallback = !isFirebaseConfigured && !(
   Boolean(import.meta.env.VITE_SUPABASE_URL) && Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY)
 );
 
@@ -121,6 +123,37 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   checkAuth: async () => {
     set({ isLoading: true, error: null });
 
+    // 1. Firebase session restore
+    if (isFirebaseConfigured && firebaseAuth) {
+      await new Promise<void>((resolve) => {
+        const unsubscribe = firebaseAuth!.onAuthStateChanged(async (fbUser) => {
+          unsubscribe();
+          if (fbUser) {
+            const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
+              email: fbUser.email ?? '',
+              name: fbUser.displayName ?? fbUser.email?.split('@')[0] ?? 'User',
+              avatarUrl: fbUser.photoURL ?? undefined,
+              googleId: fbUser.uid,
+              isDev: false,
+            });
+            persist(syncedUser);
+            set({ user: syncedUser, isAuthenticated: true, isLoading: false, needsUsernameSetup });
+          } else {
+            // No Firebase session — fall through to localStorage
+            const saved = readPersisted();
+            if (saved) {
+              set({ user: saved, isAuthenticated: true, isLoading: false, needsUsernameSetup: !saved.username });
+            } else {
+              set({ user: null, isAuthenticated: false, isLoading: false });
+            }
+          }
+          resolve();
+        });
+      });
+      return;
+    }
+
+    // 2. Supabase session restore
     const sb = await getSupabase();
 
     if (sb) {
@@ -179,20 +212,45 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // ── Sign in with Google ──────────────────────────────────────────────────
   loginWithGoogle: async () => {
     set({ isLoading: true, error: null });
-    const sb = await getSupabase();
 
+    // 1. Firebase path (preferred)
+    if (isFirebaseConfigured && firebaseAuth) {
+      try {
+        const result = await signInWithPopup(firebaseAuth, googleProvider);
+        const fbUser = result.user;
+
+        const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
+          email: fbUser.email ?? '',
+          name: fbUser.displayName ?? fbUser.email?.split('@')[0] ?? 'User',
+          avatarUrl: fbUser.photoURL ?? undefined,
+          googleId: fbUser.uid,
+          isDev: false,
+        });
+
+        persist(syncedUser);
+        set({ user: syncedUser, isAuthenticated: true, isLoading: false, needsUsernameSetup });
+        return { success: true };
+      } catch (err: any) {
+        // User closed the popup — not an error worth showing
+        if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+          set({ isLoading: false });
+          return { success: false, error: 'Sign-in cancelled' };
+        }
+        set({ isLoading: false, error: err.message });
+        return { success: false, error: err.message };
+      }
+    }
+
+    // 2. Supabase path (fallback)
+    const sb = await getSupabase();
     if (sb) {
       const { error } = await sb.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/dashboard`,
-          queryParams: {
-            prompt: 'select_account', // always show Google account picker
-            access_type: 'offline',
-          },
+          queryParams: { prompt: 'select_account', access_type: 'offline' },
         },
       });
-
       if (error) {
         set({ isLoading: false, error: error.message });
         return { success: false, error: error.message };
@@ -200,7 +258,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return { success: true };
     }
 
-    // Dev fallback — no Supabase configured, use dev auth endpoint
+    // 3. Dev fallback
     return get().loginWithGoogleDev();
   },
 
@@ -400,6 +458,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   // ── Sign out ─────────────────────────────────────────────────────────────
   logout: async () => {
+    // Sign out from Firebase if active
+    if (isFirebaseConfigured && firebaseAuth) {
+      try { await firebaseSignOut(firebaseAuth); } catch (_) {}
+    }
     const sb = await getSupabase();
     if (sb) await sb.auth.signOut();
     persist(null);
