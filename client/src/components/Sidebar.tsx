@@ -49,7 +49,7 @@ export const Sidebar: React.FC = () => {
         </NavLink>
       </div>
 
-      {/* Dev Mode Banner Indicator */}
+      {/* Dev Mode Banner */}
       {isDevMode && (
         <div className="mx-3 mt-3 p-2.5 rounded-xl bg-[#EAF3EF] border border-[#1F5E4B]/20 flex items-center gap-2 text-[#1F5E4B] text-xs">
           <Zap className="w-4 h-4 text-[#1F5E4B] shrink-0 animate-pulse" />
@@ -86,14 +86,14 @@ export const Sidebar: React.FC = () => {
           );
         })}
 
-        {/* Antigravity AI Banner */}
+        {/* Info Banner */}
         <div className="mt-6 p-4 rounded-2xl bg-[#EAF3EF]/70 border border-[#E2E6E4] text-xs text-[#202524] shadow-xs">
           <div className="flex items-center gap-2 text-[#1F5E4B] font-bold mb-1.5">
             <Sparkles className="w-4 h-4 text-[#1F5E4B] animate-pulse" />
             <span>AI Architecture Ready</span>
           </div>
           <p className="text-[11px] text-[#6B7471] leading-relaxed">
-            Exported packages include PROJECT.json tailored for instant Antigravity coding agent orchestration.
+            Exported packages include PROJECT.json tailored for instant coding agent orchestration.
           </p>
         </div>
       </nav>

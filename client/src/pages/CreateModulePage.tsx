@@ -33,19 +33,6 @@ const CATEGORIES = [
   'Other',
 ];
 
-const AVAILABLE_TECH = [
-  'React',
-  'Vue',
-  'Angular',
-  'Node.js',
-  'Python',
-  'Java',
-  'PHP',
-  'Laravel',
-  'Django',
-  'Next.js',
-  'Other',
-];
 
 export const CreateModulePage: React.FC = () => {
   const navigate = useNavigate();
@@ -148,20 +135,29 @@ export const CreateModulePage: React.FC = () => {
       setGithubReport(result);
       if (result.valid) {
         applyExtractedMetadata(result, result.repoInfo?.name || 'GitHub Module', result.repoInfo?.owner);
+
+        // Auto-detect tech stack from GitHub Languages API
+        if (result.repoInfo?.owner && result.repoInfo?.repo) {
+          try {
+            const langRes = await fetch(
+              `https://api.github.com/repos/${result.repoInfo.owner}/${result.repoInfo.repo}/languages`
+            );
+            if (langRes.ok) {
+              const langs = await langRes.json();
+              const detected = Object.keys(langs).slice(0, 6);
+              if (detected.length > 0) {
+                setSelectedTechnologies(detected);
+              }
+            }
+          } catch (_) {
+            // keep metadata-detected technologies as fallback
+          }
+        }
       }
     } catch (e: any) {
       setGithubReport({ valid: false, error: e.message || 'Failed to connect to GitHub repository.' });
     } finally {
       setIsProcessingGithub(false);
-    }
-  };
-
-  // Toggle Technology Pill
-  const toggleTechnology = (tech: string) => {
-    if (selectedTechnologies.includes(tech)) {
-      setSelectedTechnologies(selectedTechnologies.filter((t) => t !== tech));
-    } else {
-      setSelectedTechnologies([...selectedTechnologies, tech]);
     }
   };
 
@@ -520,44 +516,45 @@ export const CreateModulePage: React.FC = () => {
             </p>
           </div>
 
-          {/* Technologies Selector */}
+          {/* Technologies */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-[#202524] flex items-center gap-1.5">
               <Tag className="w-3.5 h-3.5 text-[#1F5E4B]" />
               <span>Technologies</span>
+              {activeTab === 'github' && (
+                <span className="text-[#6B7471] font-normal">(auto-detected from repository)</span>
+              )}
             </label>
-
             <div className="flex flex-wrap gap-2 pt-1">
-              {AVAILABLE_TECH.map((tech) => {
-                const isSelected = selectedTechnologies.includes(tech);
-                return (
-                  <button
+              {selectedTechnologies.length > 0 ? (
+                selectedTechnologies.map((tech) => (
+                  <span
                     key={tech}
-                    type="button"
-                    onClick={() => toggleTechnology(tech)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-mono font-semibold transition flex items-center gap-1.5 border ${
-                      isSelected
-                        ? 'bg-[#1F5E4B] text-white border-[#1F5E4B] shadow-xs'
-                        : 'bg-[#F7F8F7] text-[#6B7471] border-[#E2E6E4] hover:border-[#1F5E4B]/40'
-                    }`}
+                    className="px-3 py-1.5 rounded-xl text-xs font-mono font-semibold bg-[#EAF3EF] text-[#1F5E4B] border border-[#1F5E4B]/30 flex items-center gap-1.5"
                   >
-                    {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
-                    <span>{tech}</span>
-                  </button>
-                );
-              })}
+                    <Check className="w-3 h-3" />
+                    {tech}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTechnologies(selectedTechnologies.filter((t) => t !== tech))}
+                      className="ml-0.5 text-[#1F5E4B] hover:text-[#C94A4A] transition font-bold"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs text-[#6B7471] italic">No technologies added yet</span>
+              )}
             </div>
-
-            <div className="pt-2">
-              <input
-                type="text"
-                value={customTech}
-                onChange={(e) => setCustomTech(e.target.value)}
-                onKeyDown={handleAddCustomTech}
-                placeholder="Press Enter to add custom technology (e.g. Express, Tailwind)..."
-                className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl px-3.5 py-2 text-xs text-[#202524] placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B] focus:ring-2 focus:ring-[#1F5E4B]/15 font-mono"
-              />
-            </div>
+            <input
+              type="text"
+              value={customTech}
+              onChange={(e) => setCustomTech(e.target.value)}
+              onKeyDown={handleAddCustomTech}
+              placeholder="Press Enter to add a technology manually (e.g. React, Node.js)..."
+              className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl px-3.5 py-2 text-xs text-[#202524] placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B] font-mono"
+            />
           </div>
 
           {/* MODULE RUNTIME CONFIGURATION SECTION */}

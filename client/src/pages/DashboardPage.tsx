@@ -48,7 +48,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenCreateProjec
             Welcome back, <span className="primary-text-gradient">{user?.name || 'Developer'}</span>
           </h1>
           <p className="text-sm text-[#6B7471] max-w-xl">
-            Combine software modules visually, save projects, and export ready-to-build packages for AI agents.
+            Import, compose, and manage reusable software modules. Build projects visually and export ready-to-deploy packages.
           </p>
         </div>
 
