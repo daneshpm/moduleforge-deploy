@@ -10,16 +10,103 @@ datasource db {
 }
 
 model User {
-  id             String          @id @default(uuid())
-  email          String          @unique
-  name           String?
-  avatarUrl      String?
-  isDev          Boolean         @default(false)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  modules        Module[]        @relation("UserModules")
-  projects       Project[]       @relation("UserProjects")
-  projectMembers ProjectMember[]
+  id                  String           @id @default(uuid())
+  googleId            String?          @unique
+  email               String           @unique
+  name                String?
+  username            String?          @unique
+  avatarUrl           String?
+  isDev               Boolean          @default(false)
+  lastLogin           DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  modules             Module[]         @relation("UserModules")
+  projects            Project[]        @relation("UserProjects")
+  projectMembers      ProjectMember[]
+  ownedTeams          Team[]           @relation("TeamOwner")
+  teamMemberships     TeamMember[]
+  sentInvitations     TeamInvitation[] @relation("SentInvitations")
+  receivedInvitations TeamInvitation[] @relation("ReceivedInvitations")
+  notifications       Notification[]
+
+  @@index([username])
+  @@index([email])
+}
+
+model Team {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  avatarUrl   String?
+  ownerId     String
+  owner       User             @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  members     TeamMember[]
+  invitations TeamInvitation[]
+  projects    Project[]
+  notifications Notification[]
+
+  @@index([ownerId])
+}
+
+model TeamMember {
+  id       String   @id @default(uuid())
+  teamId   String
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     String   @default("member") // "owner" | "admin" | "member"
+  joinedAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+}
+
+model TeamInvitation {
+  id            String         @id @default(uuid())
+  teamId        String
+  team          Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  inviterId     String
+  inviter       User           @relation("SentInvitations", fields: [inviterId], references: [id])
+  inviteeUserId String?
+  inviteeUser   User?          @relation("ReceivedInvitations", fields: [inviteeUserId], references: [id])
+  inviteeEmail  String?
+  role          String         @default("member") // "admin" | "member"
+  token         String         @unique
+  status        String         @default("pending") // "pending" | "accepted" | "declined" | "expired"
+  expiresAt     DateTime
+  createdAt     DateTime       @default(now())
+  acceptedAt    DateTime?
+  notifications Notification[]
+
+  @@index([teamId])
+  @@index([inviterId])
+  @@index([inviteeUserId])
+  @@index([inviteeEmail])
+  @@index([token])
+  @@index([status])
+}
+
+model Notification {
+  id                  String          @id @default(uuid())
+  userId              String
+  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                String          // "team_invitation" | "invitation_accepted" | "invitation_declined" | "member_removed" | "system"
+  title               String
+  message             String
+  relatedTeamId       String?
+  relatedTeam         Team?           @relation(fields: [relatedTeamId], references: [id], onDelete: SetNull)
+  relatedInvitationId String?
+  relatedInvitation   TeamInvitation? @relation(fields: [relatedInvitationId], references: [id], onDelete: SetNull)
+  read                Boolean         @default(false)
+  createdAt           DateTime        @default(now())
+
+  @@index([userId])
+  @@index([read])
+  @@index([relatedTeamId])
+  @@index([relatedInvitationId])
 }
 
 model Category {
@@ -116,6 +203,8 @@ model Project {
   description      String?
   userId           String?
   user             User?             @relation("UserProjects", fields: [userId], references: [id])
+  teamId           String?
+  team             Team?             @relation(fields: [teamId], references: [id], onDelete: SetNull)
   projectType      String            @default("individual") // "individual" | "team"
   visibility       String            @default("private")    // "private" | "public"
   joinCode         String?           @unique                // e.g. "MF-8A2F1C"
@@ -135,6 +224,7 @@ model Project {
   exports          GeneratedExport[]
 
   @@index([userId])
+  @@index([teamId])
   @@index([joinCode])
 }
 

@@ -96,9 +96,9 @@ ${moduleRuntimeSpecs}
               <Package className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-[#202524]">Export & Run Project</h2>
+              <h2 className="text-base font-bold text-[#202524]">Export Project Package</h2>
               <p className="text-xs text-[#6B7471]">
-                Download project archive and run the orchestration prompt for <strong className="text-[#202524]">{project.name}</strong>
+                Download project archive and AI orchestration prompt for <strong className="text-[#202524]">{project.name}</strong>
               </p>
             </div>
           </div>
@@ -129,7 +129,7 @@ ${moduleRuntimeSpecs}
               className="py-3 px-4 rounded-xl bg-[#2E7D5B] hover:bg-[#246549] text-white font-bold text-xs shadow-md shadow-[#2E7D5B]/20 flex items-center justify-center gap-2 transition"
             >
               {isCopied ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
-              <span>{isCopied ? 'Copied Prompt ✓' : '2. Copy & Run Prompt'}</span>
+              <span>{isCopied ? 'Copied Prompt ✓' : '2. Copy AI Prompt'}</span>
             </button>
           </div>
 

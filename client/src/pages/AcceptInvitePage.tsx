@@ -1,352 +1,295 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Users, CheckCircle2, AlertCircle, ArrowRight, ShieldCheck, Clock, RefreshCw, KeyRound, Sparkles } from 'lucide-react';
+import { useSearchParams, useParams, useNavigate, Link } from 'react-router-dom';
+import {
+  Users,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight,
+  ShieldCheck,
+  Clock,
+  Sparkles,
+  Layers,
+  Check,
+  X,
+  LogIn,
+  Loader2,
+} from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useProjectStore } from '../store/useProjectStore';
 
-interface ProjectPreview {
+interface TeamInviteDetails {
   id: string;
-  name: string;
-  description?: string;
-  ownerName: string;
-  joinCode?: string;
-  modulesCount: number;
+  teamId: string;
+  teamName: string;
+  teamDescription?: string;
+  teamAvatarUrl?: string;
+  memberCount: number;
+  projectCount: number;
+  inviterName: string;
+  inviterUsername?: string;
+  inviterAvatarUrl?: string;
+  inviteeEmail?: string;
+  role: string;
+  expiresAt: string;
 }
 
 export const AcceptInvitePage: React.FC = () => {
+  const params = useParams<{ token?: string }>();
   const [searchParams] = useSearchParams();
-  const tokenParam = searchParams.get('token');
+  const tokenParam = params.token || searchParams.get('token');
   const codeParam = searchParams.get('code');
+
   const navigate = useNavigate();
-  const { user } = useAuthStore();
-  const { validateJoinCode, joinProjectByCode, checkMemberStatus } = useProjectStore();
+  const { user, isAuthenticated, loginWithGoogle } = useAuthStore();
+  const { validateJoinCode } = useProjectStore();
 
-  const [joinCodeInput, setJoinCodeInput] = useState(codeParam || '');
-  const [userName, setUserName] = useState(user?.name || '');
-  const [userEmail, setUserEmail] = useState(user?.email || '');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  const [validatedProject, setValidatedProject] = useState<ProjectPreview | null>(null);
-  const [joinStatus, setJoinStatus] = useState<'idle' | 'submitting' | 'pending_approval' | 'accepted' | 'rejected'>('idle');
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [teamInvite, setTeamInvite] = useState<TeamInviteDetails | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [acceptedSuccess, setAcceptedSuccess] = useState(false);
 
-  // Validate join code if provided in URL or input
-  const handleValidateCode = async (codeToValidate: string) => {
-    if (!codeToValidate.trim()) return;
-    setIsLoading(true);
-    setError(null);
-
-    const res = await validateJoinCode(codeToValidate.trim());
-    setIsLoading(false);
-    if (res.valid && res.project) {
-      setValidatedProject(res.project);
-      setActiveProjectId(res.project.id);
-    } else {
-      setError(res.error || 'Invalid team join code.');
-      setValidatedProject(null);
-    }
-  };
-
-  // Validate token if provided in URL
-  const handleValidateToken = async (tokenToValidate: string) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/projects/invites/validate?token=${tokenToValidate}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to validate invitation link');
-
-      setValidatedProject(data.project);
-      setActiveProjectId(data.project.id);
-      if (data.member?.email) setUserEmail(data.member.email);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Validate Invitation Token
   useEffect(() => {
-    if (codeParam) {
-      handleValidateCode(codeParam);
-    } else if (tokenParam) {
-      handleValidateToken(tokenParam);
-    }
-    if (user?.name && !userName) setUserName(user.name);
-    if (user?.email && !userEmail) setUserEmail(user.email);
-  }, [codeParam, tokenParam, user]);
-
-  // Polling check when waiting for owner approval
-  useEffect(() => {
-    if (joinStatus !== 'pending_approval' || !activeProjectId || !userEmail) return;
-
-    const interval = setInterval(async () => {
-      const res = await checkMemberStatus(activeProjectId, userEmail);
-      if (res.status === 'accepted') {
-        setJoinStatus('accepted');
-        clearInterval(interval);
-        setTimeout(() => {
-          navigate(`/builder/${activeProjectId}`);
-        }, 1200);
-      } else if (res.status === 'rejected') {
-        setJoinStatus('rejected');
-        clearInterval(interval);
+    const validate = async () => {
+      if (!tokenParam) {
+        setIsLoading(false);
+        return;
       }
-    }, 2500);
 
-    return () => clearInterval(interval);
-  }, [joinStatus, activeProjectId, userEmail, checkMemberStatus, navigate]);
+      setIsLoading(true);
+      setError(null);
 
-  const handleSubmitJoin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userEmail.trim()) {
-      setError('Please provide your email address.');
-      return;
-    }
-
-    const code = joinCodeInput.trim() || validatedProject?.joinCode;
-    if (!code && !tokenParam) {
-      setError('Please provide a valid team join code.');
-      return;
-    }
-
-    setError(null);
-    setJoinStatus('submitting');
-
-    if (tokenParam) {
-      // Direct token acceptance
       try {
-        const res = await fetch('/api/projects/invites/accept', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: tokenParam, userName: userName.trim() }),
-        });
+        const res = await fetch(`/api/invitations/${tokenParam}`);
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to accept invitation');
 
-        setJoinStatus('accepted');
-        setTimeout(() => {
-          navigate(`/builder/${data.projectId}`);
-        }, 1200);
-      } catch (err: any) {
-        setError(err.message);
-        setJoinStatus('idle');
-      }
-    } else {
-      // Join by Code -> requires owner approval
-      const res = await joinProjectByCode(code!, userName.trim(), userEmail.trim());
-      if (res.success) {
-        if (res.isOwner || res.status === 'accepted') {
-          setJoinStatus('accepted');
-          setTimeout(() => {
-            navigate(`/builder/${res.projectId}`);
-          }, 1000);
+        if (res.ok && data.invitation) {
+          setTeamInvite(data.invitation);
+          if (data.isExpired) {
+            setError('This invitation has expired (7-day validity exceeded). Please ask the team administrator for a new invite.');
+          }
         } else {
-          setJoinStatus('pending_approval');
-          if (res.projectId) setActiveProjectId(res.projectId);
+          // Check fallback for project invite token
+          const projRes = await fetch(`/api/projects/invites/validate?token=${tokenParam}`);
+          const projData = await projRes.json();
+          if (projRes.ok && projData.project) {
+            navigate(`/join-project?token=${tokenParam}`);
+            return;
+          }
+          setError(data.error || 'Invalid or unknown invitation link.');
         }
-      } else {
-        setError(res.error || 'Failed to send join request.');
-        setJoinStatus('idle');
+      } catch (err: any) {
+        setError(err.message || 'Failed to validate invitation');
+      } finally {
+        setIsLoading(false);
       }
+    };
+
+    validate();
+  }, [tokenParam, navigate]);
+
+  const handleAccept = async () => {
+    if (!tokenParam || !user) return;
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/invitations/${tokenParam}/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      });
+
+      const data = await res.json();
+      setIsSubmitting(false);
+
+      if (res.ok) {
+        setAcceptedSuccess(true);
+        setTimeout(() => {
+          navigate(data.teamId ? `/teams/${data.teamId}` : '/teams');
+        }, 1500);
+      } else {
+        setError(data.error || 'Failed to accept invitation');
+      }
+    } catch (err: any) {
+      setIsSubmitting(false);
+      setError(err.message || 'Network error while accepting invitation');
+    }
+  };
+
+  const handleDecline = async () => {
+    if (!tokenParam) return;
+    setIsSubmitting(true);
+    try {
+      await fetch(`/api/invitations/${tokenParam}/decline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id }),
+      });
+      navigate('/dashboard');
+    } catch {
+      navigate('/dashboard');
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F8F7] flex items-center justify-center p-4">
-      <div className="max-w-lg w-full p-8 rounded-3xl bg-white border border-[#E2E6E4] shadow-2xl space-y-6 animate-fade-in">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#EAF3EF] border border-[#1F5E4B]/20 text-[#1F5E4B] flex items-center justify-center shrink-0 shadow-xs">
-            <Users className="w-6 h-6" />
+    <div className="min-h-screen bg-[#F7F8F7] flex flex-col items-center justify-center p-4 select-none relative overflow-hidden">
+      {/* Background glow accent */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-[#1F5E4B]/10 rounded-full blur-[140px] pointer-events-none" />
+
+      <div className="w-full max-w-lg space-y-6 relative z-10 animate-fade-in">
+        {/* Brand Header */}
+        <div className="text-center space-y-2">
+          <div className="w-12 h-12 rounded-2xl bg-[#1F5E4B] p-0.5 shadow-md shadow-[#1F5E4B]/20 mx-auto flex items-center justify-center">
+            <Layers className="w-6 h-6 text-white" />
           </div>
-          <div>
-            <span className="text-[10px] font-mono font-bold text-[#1F5E4B] uppercase tracking-wider flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3 text-[#1F5E4B]" />
-              <span>TEAM COLLABORATION PORTAL</span>
-            </span>
-            <h1 className="text-2xl font-black text-[#202524]">Join Team Project</h1>
-          </div>
+          <h1 className="text-2xl font-black text-[#202524] tracking-tight">
+            ModuleForge
+          </h1>
+          <p className="text-xs text-[#6B7471] font-mono">Team Collaboration Invitation</p>
         </div>
 
-        {/* State 1: Accepted / Redirecting */}
-        {joinStatus === 'accepted' && (
-          <div className="p-6 rounded-2xl bg-[#EAF3EF] border border-[#2E7D5B]/30 text-center space-y-3 animate-fade-in">
-            <div className="w-12 h-12 rounded-full bg-[#2E7D5B] text-white flex items-center justify-center mx-auto shadow-md">
-              <CheckCircle2 className="w-6 h-6" />
+        {/* Main Card */}
+        <div className="bg-white border border-[#E2E6E4] rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl relative overflow-hidden">
+          {isLoading ? (
+            <div className="py-12 text-center space-y-3">
+              <Loader2 className="w-8 h-8 text-[#1F5E4B] animate-spin mx-auto" />
+              <p className="text-xs text-[#6B7471] font-mono">Validating invitation link...</p>
             </div>
-            <h2 className="text-lg font-bold text-[#202524]">Approved! You are in the Team.</h2>
-            <p className="text-xs text-[#6B7471] font-mono">
-              Opening project canvas workspace...
-            </p>
-          </div>
-        )}
-
-        {/* State 2: Pending Approval Live Polling */}
-        {joinStatus === 'pending_approval' && (
-          <div className="p-6 rounded-2xl bg-[#EAF3EF] border border-[#1F5E4B]/20 text-center space-y-4 animate-fade-in">
-            <div className="w-12 h-12 rounded-2xl bg-white border border-[#1F5E4B]/20 text-[#1F5E4B] flex items-center justify-center mx-auto shadow-sm">
-              <Clock className="w-6 h-6 text-[#1F5E4B] animate-pulse" />
-            </div>
-            <div className="space-y-1">
-              <h2 className="text-base font-bold text-[#202524]">Join Request Submitted!</h2>
-              <p className="text-xs text-[#6B7471] leading-relaxed">
-                Waiting for the project owner to <strong>approve</strong> your request.
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-white border border-[#E2E6E4] font-mono text-xs text-left space-y-1.5 shadow-2xs">
-              <div className="flex justify-between text-[#6B7471]">
-                <span>Project:</span>
-                <strong className="text-[#202524]">{validatedProject?.name || 'Team Workspace'}</strong>
+          ) : error ? (
+            <div className="py-6 text-center space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-[#FDF3F3] text-[#C94A4A] flex items-center justify-center mx-auto">
+                <AlertCircle className="w-6 h-6" />
               </div>
-              <div className="flex justify-between text-[#6B7471]">
-                <span>Your Email:</span>
-                <span className="text-[#1F5E4B] font-bold">{userEmail}</span>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-[#202524]">Invitation Unavailable</h3>
+                <p className="text-xs text-[#6B7471] max-w-xs mx-auto leading-relaxed">{error}</p>
               </div>
-              <div className="flex justify-between text-[#6B7471]">
-                <span>Status:</span>
-                <span className="text-[#1F5E4B] font-bold uppercase flex items-center gap-1">
-                  <RefreshCw className="w-3 h-3 animate-spin text-[#1F5E4B]" />
-                  <span>Pending Approval...</span>
-                </span>
-              </div>
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="px-5 py-2.5 rounded-xl bg-[#1F5E4B] text-white text-xs font-bold shadow-md shadow-[#1F5E4B]/20 transition"
+              >
+                Go to Dashboard
+              </button>
             </div>
-
-            <p className="text-[11px] text-[#6B7471] italic font-mono">
-              This window will automatically refresh as soon as you are approved.
-            </p>
-          </div>
-        )}
-
-        {/* State 3: Rejected */}
-        {joinStatus === 'rejected' && (
-          <div className="p-6 rounded-2xl bg-[#FDF3F3] border border-[#C94A4A]/30 text-center space-y-3 animate-fade-in">
-            <div className="w-12 h-12 rounded-full bg-[#C94A4A] text-white flex items-center justify-center mx-auto shadow-md">
-              <AlertCircle className="w-6 h-6" />
-            </div>
-            <h2 className="text-base font-bold text-[#202524]">Join Request Rejected</h2>
-            <p className="text-xs text-[#6B7471]">
-              The project owner declined this join request. Contact the owner for a new invite.
-            </p>
-            <button
-              onClick={() => {
-                setJoinStatus('idle');
-                setError(null);
-              }}
-              className="px-4 py-2 bg-[#1F5E4B] text-white text-xs font-bold rounded-xl"
-            >
-              Try Again
-            </button>
-          </div>
-        )}
-
-        {/* State 4: Default Form */}
-        {(joinStatus === 'idle' || joinStatus === 'submitting') && (
-          <form onSubmit={handleSubmitJoin} className="space-y-4">
-            {error && (
-              <div className="p-3.5 rounded-xl bg-[#FDF3F3] border border-[#C94A4A]/20 text-[#C94A4A] text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{error}</span>
+          ) : acceptedSuccess ? (
+            <div className="py-8 text-center space-y-4 animate-scale-in">
+              <div className="w-14 h-14 rounded-2xl bg-[#EAF3EF] border border-[#2E7D5B]/30 text-[#2E7D5B] flex items-center justify-center mx-auto shadow-xs">
+                <CheckCircle2 className="w-8 h-8" />
               </div>
-            )}
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-[#202524]">Welcome to the Team!</h3>
+                <p className="text-xs text-[#6B7471]">
+                  You have successfully joined <span className="font-bold text-[#1F5E4B]">{teamInvite?.teamName}</span>. Redirecting to team workspace...
+                </p>
+              </div>
+              <Loader2 className="w-5 h-5 text-[#1F5E4B] animate-spin mx-auto" />
+            </div>
+          ) : teamInvite ? (
+            <div className="space-y-6">
+              {/* Team Profile Header */}
+              <div className="flex items-center gap-4 p-4 rounded-2xl bg-[#F7F8F7] border border-[#E2E6E4]">
+                <img
+                  src={teamInvite.teamAvatarUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${teamInvite.teamName}`}
+                  alt={teamInvite.teamName}
+                  className="w-14 h-14 rounded-2xl object-cover ring-2 ring-[#1F5E4B]/20 shadow-xs"
+                />
+                <div className="min-w-0">
+                  <span className="text-[10px] font-mono font-bold uppercase text-[#1F5E4B] tracking-wider block">
+                    You've been invited to join
+                  </span>
+                  <h2 className="text-lg font-black text-[#202524] truncate">{teamInvite.teamName}</h2>
+                  <p className="text-xs text-[#6B7471] line-clamp-1">
+                    {teamInvite.teamDescription || 'Modular full-stack development team.'}
+                  </p>
+                </div>
+              </div>
 
-            {/* If Join Code needed */}
-            {!tokenParam && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-[#202524] flex items-center justify-between">
-                  <span>Team Join Code</span>
-                  <span className="text-[10px] font-mono text-[#6B7471]">e.g. MF-8A2F1C</span>
-                </label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <KeyRound className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B7471]" />
-                    <input
-                      type="text"
-                      value={joinCodeInput}
-                      onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
-                      placeholder="MF-XXXXXX"
-                      className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl pl-9 pr-3.5 py-2.5 text-xs font-mono text-[#202524] font-bold tracking-wider placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B] focus:ring-2 focus:ring-[#1F5E4B]/15"
-                      required
-                    />
+              {/* Inviter & Role Details */}
+              <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                <div className="p-3 rounded-xl bg-[#F7F8F7] border border-[#E2E6E4]">
+                  <span className="text-[#6B7471] block text-[10px] uppercase">Invited By</span>
+                  <span className="font-bold text-[#202524] truncate block">
+                    {teamInvite.inviterName}
+                  </span>
+                  {teamInvite.inviterUsername && (
+                    <span className="text-[#1F5E4B] text-[11px] block font-semibold">
+                      @{teamInvite.inviterUsername}
+                    </span>
+                  )}
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#F7F8F7] border border-[#E2E6E4]">
+                  <span className="text-[#6B7471] block text-[10px] uppercase">Assigned Role</span>
+                  <span className="font-bold text-[#1F5E4B] capitalize block text-sm">
+                    {teamInvite.role}
+                  </span>
+                  <span className="text-[#6B7471] text-[10px] block">
+                    {teamInvite.role === 'admin' ? 'Team Administrator' : 'Standard Member'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Login State check */}
+              {!isAuthenticated ? (
+                <div className="space-y-4 pt-2 border-t border-[#E2E6E4]">
+                  <div className="p-3.5 rounded-xl bg-[#EAF3EF] border border-[#1F5E4B]/20 text-xs text-[#1F5E4B] space-y-1">
+                    <span className="font-bold block">Sign in required</span>
+                    <p className="text-[11px] text-[#6B7471]">
+                      Please sign in with your Google account to claim your username and join this team automatically.
+                    </p>
                   </div>
+
                   <button
                     type="button"
-                    onClick={() => handleValidateCode(joinCodeInput)}
-                    disabled={isLoading || !joinCodeInput.trim()}
-                    className="px-4 py-2.5 rounded-xl bg-[#EAF3EF] hover:bg-[#1F5E4B] text-[#1F5E4B] hover:text-white border border-[#1F5E4B]/20 text-xs font-bold transition flex items-center gap-1 shadow-2xs disabled:opacity-50"
+                    onClick={() => loginWithGoogle()}
+                    className="w-full py-3.5 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] text-white font-bold text-xs shadow-md shadow-[#1F5E4B]/20 flex items-center justify-center gap-2 transition"
                   >
-                    {isLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <span>Verify</span>}
+                    <LogIn className="w-4 h-4" />
+                    <span>Sign in with Google to Accept</span>
                   </button>
                 </div>
-              </div>
-            )}
-
-            {/* Validated Project Preview Card */}
-            {validatedProject && (
-              <div className="p-4 rounded-2xl bg-[#EAF3EF] border border-[#1F5E4B]/20 space-y-2.5 font-mono text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-[#6B7471]">Project Name:</span>
-                  <strong className="text-[#202524] font-sans text-sm font-bold">{validatedProject.name}</strong>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[#6B7471]">Owner:</span>
-                  <span className="text-[#1F5E4B] font-bold">{validatedProject.ownerName}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[#6B7471]">Modules:</span>
-                  <span className="text-[#2E7D5B] font-bold">{validatedProject.modulesCount} modules configured</span>
-                </div>
-              </div>
-            )}
-
-            {/* Member Details */}
-            <div className="space-y-3 pt-1">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-[#202524]">Your Full Name</label>
-                <input
-                  type="text"
-                  value={userName}
-                  onChange={(e) => setUserName(e.target.value)}
-                  placeholder="e.g. Developer"
-                  className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl px-3.5 py-2.5 text-xs text-[#202524] placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B] focus:ring-2 focus:ring-[#1F5E4B]/15 font-medium"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-[#202524]">Your Email Address</label>
-                <input
-                  type="email"
-                  value={userEmail}
-                  onChange={(e) => setUserEmail(e.target.value)}
-                  placeholder="name@company.com"
-                  className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl px-3.5 py-2.5 text-xs text-[#202524] placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B] focus:ring-2 focus:ring-[#1F5E4B]/15 font-medium"
-                  required
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={joinStatus === 'submitting' || isLoading}
-              className="w-full py-3.5 rounded-xl font-bold text-xs bg-[#1F5E4B] hover:bg-[#174739] text-white flex items-center justify-center gap-2 transition shadow-md shadow-[#1F5E4B]/25 mt-3 disabled:opacity-50"
-            >
-              {joinStatus === 'submitting' ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Submitting Join Request...</span>
-                </>
               ) : (
-                <>
-                  <span>Request to Join Team Project</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
+                <div className="space-y-3 pt-2 border-t border-[#E2E6E4]">
+                  <div className="flex items-center justify-between text-xs text-[#6B7471] px-1">
+                    <span>Joining as:</span>
+                    <span className="font-bold text-[#202524] font-mono">
+                      {user?.name} (@{user?.username || 'user'})
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleDecline}
+                      disabled={isSubmitting}
+                      className="w-1/3 py-3 rounded-xl bg-[#F7F8F7] hover:bg-[#FDF3F3] text-[#6B7471] hover:text-[#C94A4A] border border-[#E2E6E4] text-xs font-semibold transition"
+                    >
+                      Decline
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleAccept}
+                      disabled={isSubmitting}
+                      className="w-2/3 py-3 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-[#1F5E4B]/20 flex items-center justify-center gap-2 transition"
+                    >
+                      {isSubmitting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Join Team →</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
               )}
-            </button>
-          </form>
-        )}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );

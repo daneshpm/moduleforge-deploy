@@ -6,6 +6,11 @@ import { modulesRouter } from './routes/modules';
 import { projectsRouter } from './routes/projects';
 import { categoriesRouter } from './routes/categories';
 import { webhooksRouter } from './routes/webhooks';
+import { authRouter } from './routes/auth';
+import { usersRouter } from './routes/users';
+import { teamsRouter } from './routes/teams';
+import { invitationsRouter } from './routes/invitations';
+import { notificationsRouter } from './routes/notifications';
 
 dotenv.config();
 
@@ -64,6 +69,11 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ── API routes ────────────────────────────────────────────────────────────────
+app.use('/api/auth', authRouter);
+app.use('/api/users', usersRouter);
+app.use('/api/teams', teamsRouter);
+app.use('/api/invitations', invitationsRouter);
+app.use('/api/notifications', notificationsRouter);
 app.use('/api/modules', modulesRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/categories', categoriesRouter);

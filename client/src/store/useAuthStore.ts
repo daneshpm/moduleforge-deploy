@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { User } from '../types';
 
+const API_BASE = '/api';
+
 // ---------------------------------------------------------------------------
 // Supabase is an optional peer — imported lazily so the build doesn't break
 // when VITE_SUPABASE_URL is not set (local dev without Supabase).
@@ -12,9 +14,13 @@ async function getSupabase() {
   const url = import.meta.env.VITE_SUPABASE_URL;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
   if (!url || !key) return null;
-  const { createClient } = await import('@supabase/supabase-js');
-  supabaseClient = createClient(url, key);
-  return supabaseClient;
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    supabaseClient = createClient(url, key);
+    return supabaseClient;
+  } catch (e) {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -39,8 +45,43 @@ function readPersisted(): User | null {
   }
 }
 
+// Helper to sync user profile with backend SQLite database
+async function syncWithBackend(userData: Partial<User>): Promise<{ user: User; needsUsernameSetup: boolean }> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData),
+    });
+    const data = await res.json();
+    if (res.ok && data.user) {
+      return {
+        user: data.user,
+        needsUsernameSetup: Boolean(data.needsUsernameSetup || !data.user.username),
+      };
+    }
+  } catch (err) {
+    console.warn('Backend sync fallback:', err);
+  }
+
+  // Fallback if backend unreachable
+  const fallbackUser: User = {
+    id: userData.id || `user-${Date.now()}`,
+    email: userData.email || 'user@moduleforge.local',
+    name: userData.name || 'Developer',
+    username: userData.username || userData.email?.split('@')[0] || 'developer',
+    avatarUrl: userData.avatarUrl,
+    isDev: userData.isDev ?? true,
+  };
+
+  return {
+    user: fallbackUser,
+    needsUsernameSetup: !fallbackUser.username,
+  };
+}
+
 // ---------------------------------------------------------------------------
-// Store
+// Store Interface
 // ---------------------------------------------------------------------------
 interface AuthState {
   user: User | null;
@@ -48,10 +89,17 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
   isDevMode: boolean;
+  needsUsernameSetup: boolean;
 
+  setNeedsUsernameSetup: (needs: boolean) => void;
   checkAuth: () => Promise<void>;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
+  loginWithGoogleDev: (email?: string, name?: string, avatarUrl?: string) => Promise<{ success: boolean; error?: string }>;
+  updateUsername: (username: string, name?: string, avatarUrl?: string) => Promise<{ success: boolean; error?: string }>;
+  checkUsernameAvailability: (username: string) => Promise<{ available: boolean; error?: string }>;
+  resetPassword: (email: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -59,12 +107,15 @@ const isLocalAuthFallback = !(
   Boolean(import.meta.env.VITE_SUPABASE_URL) && Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY)
 );
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
   isLoading: true,
   error: null,
   isDevMode: isLocalAuthFallback,
+  needsUsernameSetup: false,
+
+  setNeedsUsernameSetup: (needs: boolean) => set({ needsUsernameSetup: needs }),
 
   // ── Restore session on page load ─────────────────────────────────────────
   checkAuth: async () => {
@@ -76,31 +127,168 @@ export const useAuthStore = create<AuthState>((set) => ({
       // ── Supabase path ──
       const { data: { session } } = await sb.auth.getSession();
       if (session?.user) {
-        const u: User = {
-          id: session.user.id,
-          email: session.user.email ?? '',
-          name: session.user.user_metadata?.name ?? session.user.email,
-          avatarUrl: session.user.user_metadata?.avatar_url,
-        };
-        persist(u);
-        set({ user: u, isAuthenticated: true, isLoading: false });
+        const email = session.user.email ?? '';
+        const name = session.user.user_metadata?.name ?? session.user.user_metadata?.full_name ?? email.split('@')[0];
+        const avatarUrl = session.user.user_metadata?.avatar_url ?? session.user.user_metadata?.picture;
+        const googleId = session.user.identities?.find((id: any) => id.provider === 'google')?.id || session.user.id;
+
+        const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
+          email,
+          name,
+          avatarUrl,
+          googleId,
+          isDev: false,
+        });
+
+        persist(syncedUser);
+        set({
+          user: syncedUser,
+          isAuthenticated: true,
+          isLoading: false,
+          needsUsernameSetup,
+        });
         return;
       }
       set({ user: null, isAuthenticated: false, isLoading: false });
       return;
     }
 
-    // ── No Supabase — restore from localStorage (dev / offline) ──
+    // ── Dev / offline mode — restore from localStorage ──
     const saved = readPersisted();
     if (saved) {
-      set({ user: saved, isAuthenticated: true, isLoading: false });
-      return;
+      // Re-verify with backend to get latest username / profile
+      try {
+        const { user: syncedUser, needsUsernameSetup } = await syncWithBackend(saved);
+        persist(syncedUser);
+        set({
+          user: syncedUser,
+          isAuthenticated: true,
+          isLoading: false,
+          needsUsernameSetup,
+        });
+        return;
+      } catch {
+        set({ user: saved, isAuthenticated: true, isLoading: false, needsUsernameSetup: !saved.username });
+        return;
+      }
     }
 
     set({ user: null, isAuthenticated: false, isLoading: false });
   },
 
-  // ── Sign in ──────────────────────────────────────────────────────────────
+  // ── Sign in with Google ──────────────────────────────────────────────────
+  loginWithGoogle: async () => {
+    set({ isLoading: true, error: null });
+    const sb = await getSupabase();
+
+    if (sb) {
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`,
+        },
+      });
+
+      if (error) {
+        set({ isLoading: false, error: error.message });
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    }
+
+    // Dev fallback Google login
+    return get().loginWithGoogleDev('shalya@example.com', 'Shalya Gaonkar');
+  },
+
+  // ── Dev Google Login Simulation ──────────────────────────────────────────
+  loginWithGoogleDev: async (
+    email = 'shalya@example.com',
+    name = 'Shalya Gaonkar',
+    avatarUrl = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
+  ) => {
+    set({ isLoading: true, error: null });
+    try {
+      const res = await fetch(`${API_BASE}/auth/google-dev`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name, avatarUrl }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.user) {
+        throw new Error(data.error || 'Failed to sign in with Google account');
+      }
+
+      persist(data.user);
+      set({
+        user: data.user,
+        isAuthenticated: true,
+        isLoading: false,
+        needsUsernameSetup: Boolean(data.needsUsernameSetup || !data.user.username),
+      });
+
+      return { success: true };
+    } catch (err: any) {
+      set({ isLoading: false, error: err.message });
+      return { success: false, error: err.message };
+    }
+  },
+
+  // ── Update Username ──────────────────────────────────────────────────────
+  updateUsername: async (username: string, name?: string, avatarUrl?: string) => {
+    const currentUser = get().user;
+    if (!currentUser) return { success: false, error: 'Not authenticated' };
+
+    try {
+      const res = await fetch(`${API_BASE}/users/profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          username,
+          name: name || currentUser.name,
+          avatarUrl: avatarUrl || currentUser.avatarUrl,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to update username' };
+      }
+
+      const updatedUser = data.user;
+      persist(updatedUser);
+      set({
+        user: updatedUser,
+        needsUsernameSetup: false,
+      });
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  },
+
+  // ── Check Username Availability ──────────────────────────────────────────
+  checkUsernameAvailability: async (username: string) => {
+    const currentUser = get().user;
+    try {
+      const query = new URLSearchParams({
+        username,
+        ...(currentUser?.id ? { userId: currentUser.id } : {}),
+      });
+      const res = await fetch(`${API_BASE}/users/check-username?${query.toString()}`);
+      const data = await res.json();
+      return {
+        available: Boolean(data.available),
+        error: data.error,
+      };
+    } catch (err: any) {
+      return { available: false, error: 'Failed to verify username availability' };
+    }
+  },
+
+  // ── Sign in with Email / Password ─────────────────────────────────────────
   login: async (email: string, password: string) => {
     set({ isLoading: true, error: null });
     const sb = await getSupabase();
@@ -112,29 +300,33 @@ export const useAuthStore = create<AuthState>((set) => ({
         set({ isLoading: false, error: msg });
         return { success: false, error: msg };
       }
-      const u: User = {
+
+      const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
         id: data.user.id,
-        email: data.user.email ?? '',
-        name: data.user.user_metadata?.name ?? data.user.email,
+        email: data.user.email ?? email,
+        name: data.user.user_metadata?.name ?? email.split('@')[0],
         avatarUrl: data.user.user_metadata?.avatar_url,
-      };
-      persist(u);
-      set({ user: u, isAuthenticated: true, isLoading: false });
+      });
+
+      persist(syncedUser);
+      set({ user: syncedUser, isAuthenticated: true, isLoading: false, needsUsernameSetup });
       return { success: true };
     }
 
-    // ── Dev fallback when Supabase is not configured ──
+    // ── Dev fallback ──
     if (!email || !password) {
       set({ isLoading: false, error: 'Email and password are required' });
       return { success: false, error: 'Email and password are required' };
     }
-    const devUser: User = {
-      id: `local-${Date.now()}`,
+
+    const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
       email,
       name: email.split('@')[0],
-    };
-    persist(devUser);
-    set({ user: devUser, isAuthenticated: true, isLoading: false });
+      isDev: true,
+    });
+
+    persist(syncedUser);
+    set({ user: syncedUser, isAuthenticated: true, isLoading: false, needsUsernameSetup });
     return { success: true };
   },
 
@@ -153,20 +345,44 @@ export const useAuthStore = create<AuthState>((set) => ({
         set({ isLoading: false, error: error.message });
         return { success: false, error: error.message };
       }
-      // Supabase may require email confirmation — handle gracefully
-      const u: User | null = data.user
-        ? { id: data.user.id, email: data.user.email ?? '', name }
-        : null;
-      if (u) persist(u);
-      set({ user: u, isAuthenticated: Boolean(u), isLoading: false });
+
+      const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
+        id: data.user?.id,
+        email,
+        name,
+      });
+
+      if (syncedUser) persist(syncedUser);
+      set({
+        user: syncedUser,
+        isAuthenticated: Boolean(syncedUser),
+        isLoading: false,
+        needsUsernameSetup,
+      });
       return { success: true };
     }
 
     // ── Dev fallback ──
-    const devUser: User = { id: `local-${Date.now()}`, email, name };
-    persist(devUser);
-    set({ user: devUser, isAuthenticated: true, isLoading: false });
+    const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
+      email,
+      name,
+      isDev: true,
+    });
+
+    persist(syncedUser);
+    set({ user: syncedUser, isAuthenticated: true, isLoading: false, needsUsernameSetup });
     return { success: true };
+  },
+
+  // ── Reset Password ───────────────────────────────────────────────────────
+  resetPassword: async (email: string) => {
+    const sb = await getSupabase();
+    if (sb) {
+      const { error } = await sb.auth.resetPasswordForEmail(email);
+      if (error) return { success: false, error: error.message };
+      return { success: true, message: 'Password reset link sent to your email.' };
+    }
+    return { success: true, message: 'Password reset email simulated for dev.' };
   },
 
   // ── Sign out ─────────────────────────────────────────────────────────────
@@ -174,6 +390,6 @@ export const useAuthStore = create<AuthState>((set) => ({
     const sb = await getSupabase();
     if (sb) await sb.auth.signOut();
     persist(null);
-    set({ user: null, isAuthenticated: false, isLoading: false });
+    set({ user: null, isAuthenticated: false, isLoading: false, needsUsernameSetup: false });
   },
 }));

@@ -349,7 +349,7 @@ export const ModuleDetailsPage: React.FC = () => {
             <span className="text-[#1F5E4B] font-bold">{module.backendCommand || 'None'}</span>
           </div>
           <div className="p-3 rounded-xl bg-[#F7F8F7] border border-[#E2E6E4]">
-            <span className="text-[#6B7471] block text-[10px] uppercase">Frontend Port / URL</span>
+            <span className="text-[#6B7471] block text-[10px] uppercase">Frontend URL</span>
             <span className="text-[#202524] font-bold">{module.frontendUrl || `http://localhost:${module.frontendPort || 5173}`}</span>
           </div>
           <div className="p-3 rounded-xl bg-[#F7F8F7] border border-[#E2E6E4]">

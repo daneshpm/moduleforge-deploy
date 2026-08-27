@@ -214,8 +214,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
                     <Code2 className="w-4 h-4" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-[#202524]">Full Git Sync & Webhooks</h4>
-                    <p className="text-[11px] text-[#6B7471]">Auto-sync GitHub repositories, commits, and multi-service runners.</p>
+                    <h4 className="text-xs font-bold text-[#202524]">Full Git Repository Sync</h4>
+                    <p className="text-[11px] text-[#6B7471]">Auto-sync GitHub repositories and version commit histories.</p>
                   </div>
                 </div>
 

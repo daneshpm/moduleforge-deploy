@@ -13,7 +13,10 @@ import { ModuleWorkspacePage } from './pages/ModuleWorkspacePage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { MyModulesPage } from './pages/MyModulesPage';
 import { MyProjectsPage } from './pages/MyProjectsPage';
+import { TeamsPage } from './pages/TeamsPage';
+import { TeamDetailPage } from './pages/TeamDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { UsernameSetupModal } from './components/UsernameSetupModal';
 import { useAuthStore } from './store/useAuthStore';
 import { useProjectStore } from './store/useProjectStore';
 import { FolderGit2, Loader2, X } from 'lucide-react';
@@ -59,7 +62,9 @@ export const App: React.FC = () => {
   const isWorkspaceRoute = location.pathname.includes('/workspace');
   const isInviteRoute =
     location.pathname === '/join-project' ||
-    location.pathname.startsWith('/invites/');
+    location.pathname === '/join-team' ||
+    location.pathname.startsWith('/invites/') ||
+    location.pathname.startsWith('/invite/');
 
   const handleQuickCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,7 +83,9 @@ export const App: React.FC = () => {
     return (
       <Routes>
         <Route path="/join-project" element={<AcceptInvitePage />} />
+        <Route path="/join-team" element={<AcceptInvitePage />} />
         <Route path="/invites/:token" element={<AcceptInvitePage />} />
+        <Route path="/invite/:token" element={<AcceptInvitePage />} />
       </Routes>
     );
   }
@@ -146,11 +153,16 @@ export const App: React.FC = () => {
                 path="/projects"
                 element={<MyProjectsPage onOpenCreateProject={() => setIsProjectModalOpen(true)} />}
               />
+              <Route path="/teams" element={<TeamsPage />} />
+              <Route path="/teams/:teamId" element={<TeamDetailPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </main>
         </div>
+
+        {/* Global Username Setup Modal for First-time Google Login */}
+        <UsernameSetupModal />
 
         {/* Quick Create Project Modal */}
         {isProjectModalOpen && (

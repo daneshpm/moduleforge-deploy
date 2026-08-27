@@ -5,6 +5,7 @@ import {
   Boxes,
   PackageCheck,
   FolderGit2,
+  Users,
   PlusCircle,
   Settings,
   Zap,
@@ -23,6 +24,7 @@ export const Sidebar: React.FC = () => {
     { label: 'Modules', path: '/modules', icon: Boxes },
     { label: 'My Modules', path: '/my-modules', icon: PackageCheck },
     { label: 'My Projects', path: '/projects', icon: FolderGit2 },
+    { label: 'Teams', path: '/teams', icon: Users },
     { label: 'Create Module', path: '/modules/create', icon: PlusCircle },
     { label: 'Settings', path: '/settings', icon: Settings },
   ];
@@ -101,19 +103,21 @@ export const Sidebar: React.FC = () => {
         <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-[#E2E6E4] hover:border-[#1F5E4B]/40 transition shadow-xs">
           <div className="flex items-center gap-2.5 overflow-hidden">
             <img
-              src={user?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
+              src={user?.avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${user?.name || 'Developer'}`}
               alt="User Avatar"
-              className="w-8 h-8 rounded-full ring-2 ring-[#1F5E4B]/30 object-cover shadow-xs"
+              className="w-8 h-8 rounded-full ring-2 ring-[#1F5E4B]/30 object-cover shadow-xs shrink-0"
             />
             <div className="truncate text-xs">
               <span className="font-bold text-[#202524] block truncate">{user?.name || 'Developer'}</span>
-              <span className="text-[#6B7471] block truncate text-[11px] font-mono">{user?.email || 'dev@moduleforge.io'}</span>
+              <span className="text-[#1F5E4B] block truncate text-[11px] font-mono font-semibold">
+                @{user?.username || 'user'}
+              </span>
             </div>
           </div>
           <button
             onClick={logout}
             title="Logout"
-            className="p-1.5 text-[#6B7471] hover:text-[#C94A4A] hover:bg-[#FDF3F3] rounded-lg transition"
+            className="p-1.5 text-[#6B7471] hover:text-[#C94A4A] hover:bg-[#FDF3F3] rounded-lg transition shrink-0"
           >
             <LogOut className="w-4 h-4" />
           </button>

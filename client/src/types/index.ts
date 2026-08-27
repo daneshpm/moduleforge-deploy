@@ -220,6 +220,8 @@ export interface Project {
   name: string;
   description?: string;
   userId?: string;
+  teamId?: string;
+  team?: Team;
   projectType: 'individual' | 'team';
   visibility: 'private' | 'public';
   joinCode?: string;
@@ -242,8 +244,100 @@ export interface User {
   id: string;
   email: string;
   name?: string;
+  username?: string;
   avatarUrl?: string;
+  googleId?: string;
   isDev?: boolean;
+  lastLogin?: string;
+  createdAt?: string;
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  description?: string;
+  avatarUrl?: string;
+  ownerId: string;
+  owner?: {
+    id: string;
+    name?: string;
+    username?: string;
+    avatarUrl?: string;
+  };
+  members?: TeamMember[];
+  projects?: Project[];
+  invitations?: TeamInvitation[];
+  userRole?: 'owner' | 'admin' | 'member';
+  memberCount?: number;
+  projectCount?: number;
+  pendingInviteCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeamMember {
+  id: string;
+  teamId: string;
+  userId: string;
+  user: {
+    id: string;
+    name?: string;
+    username?: string;
+    avatarUrl?: string;
+  };
+  role: 'owner' | 'admin' | 'member';
+  joinedAt: string;
+}
+
+export interface TeamInvitation {
+  id: string;
+  teamId: string;
+  team?: Team;
+  inviterId: string;
+  inviter?: {
+    id: string;
+    name?: string;
+    username?: string;
+    avatarUrl?: string;
+  };
+  inviteeUserId?: string;
+  inviteeUser?: {
+    id: string;
+    name?: string;
+    username?: string;
+    avatarUrl?: string;
+  };
+  inviteeEmail?: string;
+  role: 'admin' | 'member';
+  token: string;
+  status: 'pending' | 'accepted' | 'declined' | 'expired';
+  expiresAt: string;
+  createdAt: string;
+  acceptedAt?: string;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: 'team_invitation' | 'invitation_accepted' | 'invitation_declined' | 'member_removed' | 'system';
+  title: string;
+  message: string;
+  relatedTeamId?: string;
+  relatedTeam?: {
+    id: string;
+    name: string;
+    avatarUrl?: string;
+  };
+  relatedInvitationId?: string;
+  relatedInvitation?: {
+    id: string;
+    token: string;
+    status: string;
+    role: string;
+    expiresAt: string;
+  };
+  read: boolean;
+  createdAt: string;
 }
 
 export interface ValidationResult {

@@ -28,8 +28,6 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../store/useProjectStore';
 import { useModuleStore } from '../store/useModuleStore';
-import { Module, ProjectModule, ModuleDeployment } from '../types';
-import { TeamProjectDashboard } from '../components/TeamProjectDashboard';
 import { ExportProjectModal } from '../components/ExportProjectModal';
 
 export const VisualBuilderPage: React.FC = () => {
@@ -52,7 +50,6 @@ export const VisualBuilderPage: React.FC = () => {
 
   const { modules, fetchModules } = useModuleStore();
 
-  const [activeView, setActiveView] = useState<'builder' | 'team'>('builder');
   const [moduleSearch, setModuleSearch] = useState('');
   const [selectedProjectModule, setSelectedProjectModule] = useState<ProjectModule | null>(null);
   const [draggingModuleId, setDraggingModuleId] = useState<string | null>(null);
@@ -195,33 +192,6 @@ export const VisualBuilderPage: React.FC = () => {
                 <span>AI Architect Active</span>
               </div>
             </div>
-            <p className="text-[11px] text-[#6B7471] font-mono">Neural Application Canvas</p>
-          </div>
-
-          {/* View Mode Switcher */}
-          <div className="flex bg-[#F7F8F7] p-1 rounded-xl border border-[#E2E6E4] ml-4 font-semibold text-xs">
-            <button
-              onClick={() => setActiveView('builder')}
-              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-                activeView === 'builder'
-                  ? 'bg-[#1F5E4B] text-white shadow-xs font-bold'
-                  : 'text-[#6B7471] hover:text-[#202524]'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Canvas Builder</span>
-            </button>
-            <button
-              onClick={() => setActiveView('team')}
-              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-                activeView === 'team'
-                  ? 'bg-[#1F5E4B] text-white shadow-xs font-bold'
-                  : 'text-[#6B7471] hover:text-[#202524]'
-              }`}
-            >
-              <FolderGit2 className="w-3.5 h-3.5 text-[#2E7D5B]" />
-              <span>Team & Webhooks</span>
-            </button>
           </div>
         </div>
 
@@ -248,12 +218,12 @@ export const VisualBuilderPage: React.FC = () => {
             className="px-4 py-2 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] text-white font-bold text-xs shadow-md shadow-[#1F5E4B]/20 flex items-center gap-2 transition"
           >
             <Download className="w-4 h-4 text-white" />
-            <span>Export & Run Prompt</span>
+            <span>Export Package</span>
           </button>
         </div>
       </header>
 
-      {/* Export & Run Prompt Modal */}
+      {/* Export Package Modal */}
       {showExportModal && (
         <ExportProjectModal
           project={currentProject}
@@ -262,12 +232,7 @@ export const VisualBuilderPage: React.FC = () => {
       )}
 
       {/* Main Content Workspace */}
-      {activeView === 'team' ? (
-        <div className="flex-1 overflow-y-auto p-6 max-w-7xl mx-auto w-full">
-          <TeamProjectDashboard project={currentProject} />
-        </div>
-      ) : (
-        <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
           {/* COLUMN 1: LEFT MODULES DRAWER */}
           <aside className="w-80 bg-white border-r border-[#E2E6E4] flex flex-col shrink-0 z-20 shadow-xs">
             <div className="p-4 border-b border-[#E2E6E4] space-y-3">
@@ -695,7 +660,6 @@ export const VisualBuilderPage: React.FC = () => {
             </div>
           </aside>
         </div>
-      )}
-    </div>
+      </div>
   );
 };

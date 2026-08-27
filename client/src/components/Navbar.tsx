@@ -2,6 +2,7 @@ import React from 'react';
 import { Search, Plus, Terminal, Crown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useModuleStore } from '../store/useModuleStore';
+import { NotificationBell } from './NotificationBell';
 
 interface NavbarProps {
   onOpenCreateProject?: () => void;
@@ -37,12 +38,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateProject }) => {
         )}
       </div>
 
-      {/* Action Controls & AI Badge */}
+      {/* Action Controls & Notification Bell */}
       <div className="flex items-center gap-3">
         <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#EAF3EF] border border-[#1F5E4B]/20 text-[#1F5E4B] font-mono text-[11px] font-semibold">
           <Crown className="w-3.5 h-3.5 text-[#1F5E4B] animate-pulse" />
           <span>AI Engine Ready</span>
         </div>
+
+        <NotificationBell />
 
         <button
           onClick={() => navigate('/modules/create')}

@@ -77,8 +77,6 @@ export const CreateModulePage: React.FC = () => {
   // Module Runtime Configuration State
   const [frontendCommand, setFrontendCommand] = useState('npm run dev');
   const [backendCommand, setBackendCommand] = useState('');
-  const [frontendPort, setFrontendPort] = useState<number>(5173);
-  const [backendPort, setBackendPort] = useState<number>(5000);
   const [frontendUrl, setFrontendUrl] = useState('http://localhost:5173');
   const [backendUrl, setBackendUrl] = useState('http://localhost:5000');
   const [workingDir, setWorkingDir] = useState('.');
@@ -222,8 +220,8 @@ export const CreateModulePage: React.FC = () => {
       deployedUrl: deployedUrl.trim() || undefined,
       frontendCommand: frontendCommand.trim() || 'npm run dev',
       backendCommand: backendCommand.trim(),
-      frontendPort: Number(frontendPort) || 5173,
-      backendPort: Number(backendPort) || 5000,
+      frontendPort: 5173,
+      backendPort: 5000,
       frontendUrl: frontendUrl.trim() || 'http://localhost:5173',
       backendUrl: backendUrl.trim() || 'http://localhost:5000',
       workingDir: workingDir.trim() || '.',
@@ -599,29 +597,7 @@ export const CreateModulePage: React.FC = () => {
                 />
               </div>
 
-              {/* Frontend Port */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-[#202524]">Frontend Port</label>
-                <input
-                  type="number"
-                  value={frontendPort}
-                  onChange={(e) => setFrontendPort(Number(e.target.value))}
-                  placeholder="5173"
-                  className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl px-3.5 py-2 text-xs text-[#202524] font-mono placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B]"
-                />
-              </div>
 
-              {/* Backend Port */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-[#202524]">Backend Port (Optional)</label>
-                <input
-                  type="number"
-                  value={backendPort}
-                  onChange={(e) => setBackendPort(Number(e.target.value))}
-                  placeholder="5000"
-                  className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl px-3.5 py-2 text-xs text-[#202524] font-mono placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B]"
-                />
-              </div>
 
               {/* Frontend URL */}
               <div className="space-y-1.5">
