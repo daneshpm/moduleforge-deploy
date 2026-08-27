@@ -9,8 +9,8 @@ import {
   Settings,
   Zap,
   LogOut,
-  Sparkles,
   Layers,
+  GitBranch,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -40,15 +40,15 @@ export const Sidebar: React.FC = () => {
             <div className="font-bold text-lg tracking-tight text-white flex items-center gap-1.5">
               ModuleForge
               <span className="px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-indigo-500/20 text-indigo-300 rounded-md border border-indigo-500/30">
-                MVP
+                v1
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 font-mono">Software Module Engine</p>
+            <p className="text-[11px] text-slate-400 font-mono">Module Platform</p>
           </div>
         </NavLink>
       </div>
 
-      {/* Dev Mode Banner Indicator */}
+      {/* Dev Mode Banner */}
       {isDevMode && (
         <div className="mx-3 mt-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center gap-2 text-amber-300 text-xs">
           <Zap className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
@@ -60,7 +60,7 @@ export const Sidebar: React.FC = () => {
       )}
 
       {/* Primary Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         <div className="px-3 mb-2 text-[10px] font-semibold font-mono tracking-wider text-slate-500 uppercase">
           Menu
         </div>
@@ -84,14 +84,14 @@ export const Sidebar: React.FC = () => {
           );
         })}
 
-        {/* Antigravity AI Banner */}
-        <div className="mt-6 p-3 rounded-xl bg-gradient-to-br from-indigo-950/60 to-purple-950/60 border border-indigo-500/20 text-xs text-slate-300">
-          <div className="flex items-center gap-2 text-indigo-300 font-semibold mb-1">
-            <Sparkles className="w-4 h-4 text-indigo-400" />
-            <span>Antigravity Ready</span>
+        {/* Platform info card */}
+        <div className="mt-6 p-3 rounded-xl bg-slate-800/40 border border-slate-700/50 text-xs text-slate-400 space-y-1.5">
+          <div className="flex items-center gap-2 text-slate-300 font-semibold">
+            <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Module Platform</span>
           </div>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            Exported ZIP packages include PROJECT.json tailored for immediate coding agent integration.
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            Import, manage and deploy reusable software modules across your projects.
           </p>
         </div>
       </nav>
@@ -100,11 +100,9 @@ export const Sidebar: React.FC = () => {
       <div className="p-3 border-t border-slate-800/80 bg-slate-950/50">
         <div className="flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-slate-800/80">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <img
-              src={user?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
-              alt="User Avatar"
-              className="w-8 h-8 rounded-full ring-2 ring-indigo-500/30 object-cover"
-            />
+            <div className="w-8 h-8 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-xs shrink-0">
+              {(user?.name || user?.email || 'D').charAt(0).toUpperCase()}
+            </div>
             <div className="truncate text-xs">
               <span className="font-semibold text-slate-200 block truncate">{user?.name || 'Developer'}</span>
               <span className="text-slate-400 block truncate text-[11px]">{user?.email || 'dev@moduleforge.io'}</span>

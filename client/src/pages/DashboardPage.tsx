@@ -7,7 +7,6 @@ import {
   FolderPlus,
   ArrowRight,
   Clock,
-  Sparkles,
   Download,
   Terminal,
   Layers,
@@ -41,14 +40,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenCreateProjec
       <div className="p-8 rounded-2xl bg-gradient-to-r from-indigo-950/80 via-slate-900 to-purple-950/80 border border-indigo-500/20 relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="space-y-2 z-10">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-mono">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <Layers className="w-3.5 h-3.5 text-indigo-400" />
             <span>ModuleForge Workspace</span>
           </div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">
             Welcome back, <span className="text-indigo-400">{user?.name || 'Developer'}</span>
           </h1>
           <p className="text-sm text-slate-300 max-w-xl">
-            Combine software modules visually, save projects, and export ready-to-build packages for Antigravity.
+            Import, compose and manage reusable software modules. Build projects visually and export ready-to-deploy packages.
           </p>
         </div>
 

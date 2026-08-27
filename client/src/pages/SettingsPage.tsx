@@ -226,10 +226,10 @@ export const SettingsPage: React.FC = () => {
             <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <Cpu className="w-4 h-4 text-purple-400" />
-                <span>Target AI Coding Agent</span>
+                <span>Export Format</span>
               </div>
               <span className="px-2.5 py-1 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-bold">
-                Antigravity / Cursor / Claude Code
+                ZIP with PROJECT.json
               </span>
             </div>
           </div>
