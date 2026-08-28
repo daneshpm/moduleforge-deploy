@@ -10,9 +10,7 @@ import {
   Settings,
   Zap,
   LogOut,
-  Sparkles,
   Layers,
-  Crown,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -60,12 +58,12 @@ export const Sidebar: React.FC = () => {
         </div>
       )}
 
-      {/* Primary Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        <div className="px-3 mb-2 text-[10px] font-bold font-mono tracking-wider text-[#6B7471] uppercase flex items-center justify-between">
+      {/* Navigation */}
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        <div className="px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-wider text-[#6B7471] flex items-center justify-between">
           <span>Navigation</span>
-          <Crown className="w-3 h-3 text-[#1F5E4B]" />
         </div>
+
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -73,9 +71,9 @@ export const Sidebar: React.FC = () => {
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 ${
+                `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs transition ${
                   isActive
-                    ? 'bg-[#EAF3EF] text-[#1F5E4B] border border-[#1F5E4B]/20 font-bold shadow-xs'
+                    ? 'bg-[#EAF3EF] text-[#1F5E4B] font-bold border border-[#1F5E4B]/20 shadow-xs'
                     : 'text-[#6B7471] hover:text-[#202524] hover:bg-[#F7F8F7] border border-transparent font-medium'
                 }`
               }
@@ -85,17 +83,6 @@ export const Sidebar: React.FC = () => {
             </NavLink>
           );
         })}
-
-        {/* Info Banner */}
-        <div className="mt-6 p-4 rounded-2xl bg-[#EAF3EF]/70 border border-[#E2E6E4] text-xs text-[#202524] shadow-xs">
-          <div className="flex items-center gap-2 text-[#1F5E4B] font-bold mb-1.5">
-            <Sparkles className="w-4 h-4 text-[#1F5E4B] animate-pulse" />
-            <span>AI Architecture Ready</span>
-          </div>
-          <p className="text-[11px] text-[#6B7471] leading-relaxed">
-            Exported packages include PROJECT.json tailored for instant coding agent orchestration.
-          </p>
-        </div>
       </nav>
 
       {/* User Profile Footer */}

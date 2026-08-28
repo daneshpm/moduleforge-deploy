@@ -256,34 +256,8 @@ class EmailService {
         console.log(`✉️ Delivered email successfully to ${to} (Message ID: ${info.messageId})`);
         return { success: true, gmailComposeUrl, mailtoUrl, inviteLink };
       } else {
-        // Fallback with Ethereal in development
-        try {
-          const testAccount = await nodemailer.createTestAccount();
-          const testTransporter = nodemailer.createTransport({
-            host: 'smtp.ethereal.email',
-            port: 587,
-            secure: false,
-            auth: {
-              user: testAccount.user,
-              pass: testAccount.pass,
-            },
-          });
-
-          const info = await testTransporter.sendMail({
-            from: '"ModuleForge" <no-reply@moduleforge.io>',
-            to,
-            subject,
-            html: htmlContent,
-            text: plainBody,
-          });
-
-          const previewUrl = nodemailer.getTestMessageUrl(info) || undefined;
-          console.log(`✉️ Test Email sent via Ethereal: ${previewUrl}`);
-          return { success: true, previewUrl, gmailComposeUrl, mailtoUrl, inviteLink };
-        } catch {
-          console.log(`✉️ [Simulation] Email to: ${to} | Link: ${inviteLink}`);
-          return { success: true, gmailComposeUrl, mailtoUrl, inviteLink };
-        }
+        console.log(`✉️ [Invite Generated] To: ${to} | Link: ${inviteLink}`);
+        return { success: true, gmailComposeUrl, mailtoUrl, inviteLink };
       }
     } catch (error: any) {
       console.error('Failed to deliver email:', error.message);

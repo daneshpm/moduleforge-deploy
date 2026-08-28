@@ -94,6 +94,17 @@ teamsRouter.post('/', async (req, res) => {
       },
     });
 
+    // Automatically create default #general channel for the team
+    await (prisma as any).channel.create({
+      data: {
+        teamId: team.id,
+        name: 'general',
+        description: 'General team discussion and announcements',
+        type: 'text',
+        createdById: owner.id,
+      },
+    });
+
     res.status(201).json({ success: true, team });
   } catch (error: any) {
     console.error('Error creating team:', error);
@@ -393,8 +404,8 @@ teamsRouter.post('/:teamId/invitations/username', async (req, res) => {
     }
 
     const caller = await getCallerTeamRole(teamId, inviterId);
-    if (!caller || !caller.isAdmin) {
-      return res.status(403).json({ error: 'Only team owners or admins can invite members' });
+    if (!caller) {
+      return res.status(403).json({ error: 'You must be a member of this team to invite users' });
     }
 
     const team = await (prisma as any).team.findUnique({
@@ -530,8 +541,8 @@ teamsRouter.post('/:teamId/invitations/email', async (req, res) => {
     }
 
     const caller = await getCallerTeamRole(teamId, inviterId);
-    if (!caller || !caller.isAdmin) {
-      return res.status(403).json({ error: 'Only team owners or admins can invite members' });
+    if (!caller) {
+      return res.status(403).json({ error: 'You must be a member of this team to invite users' });
     }
 
     const team = await (prisma as any).team.findUnique({
@@ -660,8 +671,8 @@ teamsRouter.delete('/:teamId/invitations/:invitationId', async (req, res) => {
     const callerId = (req.query.userId || req.headers['x-user-id']) as string | undefined;
 
     const caller = await getCallerTeamRole(teamId, callerId);
-    if (!caller || !caller.isAdmin) {
-      return res.status(403).json({ error: 'Only team owners or administrators can cancel invitations' });
+    if (!caller) {
+      return res.status(403).json({ error: 'You must be a member of this team to manage invitations' });
     }
 
     await (prisma as any).teamInvitation.delete({

@@ -16,9 +16,15 @@ import { MyProjectsPage } from './pages/MyProjectsPage';
 import { TeamsPage } from './pages/TeamsPage';
 import { TeamDetailPage } from './pages/TeamDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { CommunicationPage } from './pages/CommunicationPage';
+import { MeetingJoinPage } from './pages/MeetingJoinPage';
+import { IncomingCallModal } from './components/communication/IncomingCallModal';
+import { ActiveCallModal } from './components/communication/ActiveCallModal';
+import { MeetingRoomModal } from './components/communication/MeetingRoomModal';
 import { UsernameSetupModal } from './components/UsernameSetupModal';
 import { useAuthStore } from './store/useAuthStore';
 import { useProjectStore } from './store/useProjectStore';
+import { useCommunicationStore } from './store/useCommunicationStore';
 import { FolderGit2, Loader2, X } from 'lucide-react';
 
 // ── Auth guard: redirects to /login if not authenticated ─────────────────────
@@ -45,8 +51,9 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 export const App: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { checkAuth } = useAuthStore();
+  const { user, checkAuth } = useAuthStore();
   const { createProject } = useProjectStore();
+  const { updatePresence, pollActiveCalls } = useCommunicationStore();
 
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -56,10 +63,35 @@ export const App: React.FC = () => {
     checkAuth();
   }, [checkAuth]);
 
+  // Presence & Active Call Polling Lifecycle
+  useEffect(() => {
+    if (user?.id) {
+      updatePresence('online', undefined, 'idle');
+
+      const heartbeat = setInterval(() => {
+        updatePresence('online', undefined, 'idle');
+        pollActiveCalls();
+      }, 30000);
+
+      const handleBeforeUnload = () => {
+        updatePresence('offline');
+      };
+      window.addEventListener('beforeunload', handleBeforeUnload);
+
+      return () => {
+        clearInterval(heartbeat);
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      };
+    }
+  }, [user?.id, updatePresence, pollActiveCalls]);
+
   const isPublicRoute =
     location.pathname === '/' || location.pathname === '/login';
   const isBuilderRoute = location.pathname.startsWith('/builder/');
   const isWorkspaceRoute = location.pathname.includes('/workspace');
+  const isMeetRoute =
+    location.pathname.startsWith('/meet/') ||
+    location.pathname.startsWith('/meetings/');
   const isInviteRoute =
     location.pathname === '/join-project' ||
     location.pathname === '/join-team' ||
@@ -77,6 +109,18 @@ export const App: React.FC = () => {
       navigate(`/builder/${project.id}`);
     }
   };
+
+  // ── Dedicated meeting room join preview — protected, full screen ──────────
+  if (isMeetRoute) {
+    return (
+      <RequireAuth>
+        <Routes>
+          <Route path="/meet/:roomId" element={<MeetingJoinPage />} />
+          <Route path="/meetings/:roomId" element={<MeetingJoinPage />} />
+        </Routes>
+      </RequireAuth>
+    );
+  }
 
   // ── Invite acceptance — public, full screen ───────────────────────────────
   if (isInviteRoute) {
@@ -155,11 +199,18 @@ export const App: React.FC = () => {
               />
               <Route path="/teams" element={<TeamsPage />} />
               <Route path="/teams/:teamId" element={<TeamDetailPage />} />
+              <Route path="/messages" element={<CommunicationPage />} />
+              <Route path="/communication" element={<CommunicationPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </main>
         </div>
+
+        {/* Global Real-time Calling and Meeting Modals */}
+        <IncomingCallModal />
+        <ActiveCallModal />
+        <MeetingRoomModal />
 
         {/* Global Username Setup Modal for First-time Google Login */}
         <UsernameSetupModal />

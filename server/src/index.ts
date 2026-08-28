@@ -11,6 +11,11 @@ import { usersRouter } from './routes/users';
 import { teamsRouter } from './routes/teams';
 import { invitationsRouter } from './routes/invitations';
 import { notificationsRouter } from './routes/notifications';
+import { channelsRouter } from './routes/channels';
+import { directChatsRouter } from './routes/directChats';
+import { callsRouter } from './routes/calls';
+import { meetingsRouter } from './routes/meetings';
+import { presenceRouter } from './routes/presence';
 
 dotenv.config();
 
@@ -79,6 +84,12 @@ app.use('/api/projects', projectsRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/webhooks', webhooksRouter);
 app.use('/api/github/webhook', webhooksRouter);
+app.use('/api/channels', channelsRouter);
+app.use('/api/chats', directChatsRouter);
+app.use('/api/direct-chats', directChatsRouter);
+app.use('/api/calls', callsRouter);
+app.use('/api/meetings', meetingsRouter);
+app.use('/api/presence', presenceRouter);
 
 // ── Local-only routes (not supported on Vercel serverless) ────────────────────
 // These features require a persistent filesystem and long-running processes,

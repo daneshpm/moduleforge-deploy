@@ -28,6 +28,16 @@ model User {
   sentInvitations     TeamInvitation[] @relation("SentInvitations")
   receivedInvitations TeamInvitation[] @relation("ReceivedInvitations")
   notifications       Notification[]
+  channelsCreated     Channel[]        @relation("ChannelCreator")
+  channelMessages     ChannelMessage[] @relation("UserChannelMessages")
+  directChatMemberships DirectChatParticipant[]
+  directMessages      DirectMessage[]  @relation("UserDirectMessages")
+  callsInitiated      CallSession[]    @relation("CallsInitiated")
+  callsReceived       CallSession[]    @relation("CallsReceived")
+  meetingsCreated     Meeting[]        @relation("MeetingsCreated")
+  meetingParticipations MeetingParticipant[]
+  meetingMessages     MeetingMessage[] @relation("UserMeetingMessages")
+  presence            UserPresence?
 
   @@index([username])
   @@index([email])
@@ -46,6 +56,8 @@ model Team {
   invitations TeamInvitation[]
   projects    Project[]
   notifications Notification[]
+  channels    Channel[]
+  meetings    Meeting[]
 
   @@index([ownerId])
 }
@@ -222,6 +234,8 @@ model Project {
   members          ProjectMember[]
   activities       ProjectActivity[]
   exports          GeneratedExport[]
+  channels         Channel[]
+  meetings         Meeting[]
 
   @@index([userId])
   @@index([teamId])
@@ -337,3 +351,184 @@ model GeneratedExport {
   zipPath     String
   createdAt   DateTime @default(now())
 }
+
+// ── Communication & Calling System Models ───────────────────────────────────
+
+model Channel {
+  id          String           @id @default(uuid())
+  name        String           // e.g. "general", "dev-backend", "design"
+  description String?
+  type        String           @default("text") // "text" | "voice" | "video"
+  isPrivate   Boolean          @default(false)
+  teamId      String?
+  team        Team?            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdById String?
+  creator     User?            @relation("ChannelCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  messages    ChannelMessage[]
+  meetings    Meeting[]
+
+  @@index([teamId])
+  @@index([projectId])
+  @@index([type])
+}
+
+model ChannelMessage {
+  id          String   @id @default(uuid())
+  channelId   String
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  senderId    String
+  sender      User     @relation("UserChannelMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  text        String
+  attachments String?  @default("[]") // JSON string of attachments [{ name, url, type, size }]
+  pinned      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([channelId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model DirectChat {
+  id           String                  @id @default(uuid())
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+  participants DirectChatParticipant[]
+  messages     DirectMessage[]
+  calls        CallSession[]
+}
+
+model DirectChatParticipant {
+  id         String     @id @default(uuid())
+  chatId     String
+  chat       DirectChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt DateTime   @default(now())
+  joinedAt   DateTime   @default(now())
+
+  @@unique([chatId, userId])
+  @@index([chatId])
+  @@index([userId])
+}
+
+model DirectMessage {
+  id          String     @id @default(uuid())
+  chatId      String
+  chat        DirectChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderId    String
+  sender      User       @relation("UserDirectMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  text        String
+  attachments String?    @default("[]")
+  read        Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([chatId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model CallSession {
+  id          String      @id @default(uuid())
+  type        String      @default("voice") // "voice" | "video"
+  callerId    String
+  caller      User        @relation("CallsInitiated", fields: [callerId], references: [id], onDelete: Cascade)
+  receiverId  String?
+  receiver    User?       @relation("CallsReceived", fields: [receiverId], references: [id], onDelete: Cascade)
+  chatId      String?
+  chat        DirectChat? @relation(fields: [chatId], references: [id], onDelete: SetNull)
+  roomId      String
+  status      String      @default("CALLING") // "CALLING" | "RINGING" | "CONNECTED" | "ENDED" | "DECLINED" | "MISSED"
+  startedAt   DateTime?
+  endedAt     DateTime?
+  duration    Int?        @default(0) // seconds
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([callerId])
+  @@index([receiverId])
+  @@index([roomId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Meeting {
+  id                 String               @id @default(uuid())
+  title              String
+  roomId             String               @unique
+  status             String               @default("ACTIVE") // "CREATED" | "ACTIVE" | "ENDED"
+  teamId             String?
+  team               Team?                @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  projectId          String?
+  project            Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  channelId          String?
+  channel            Channel?             @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  createdById        String
+  createdBy          User                 @relation("MeetingsCreated", fields: [createdById], references: [id], onDelete: Cascade)
+  isScreenSharing    Boolean              @default(false)
+  screenShareUserId  String?
+  startedAt          DateTime             @default(now())
+  endedAt            DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  participants       MeetingParticipant[]
+  messages           MeetingMessage[]
+
+  @@index([teamId])
+  @@index([projectId])
+  @@index([channelId])
+  @@index([roomId])
+  @@index([status])
+}
+
+model MeetingParticipant {
+  id           String    @id @default(uuid())
+  meetingId    String
+  meeting      Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         String    @default("participant") // "host" | "co-host" | "participant"
+  isMuted      Boolean   @default(false)
+  isVideoOff   Boolean   @default(false)
+  isHandRaised Boolean   @default(false)
+  joinedAt     DateTime  @default(now())
+  leftAt       DateTime?
+
+  @@unique([meetingId, userId])
+  @@index([meetingId])
+  @@index([userId])
+}
+
+model MeetingMessage {
+  id        String   @id @default(uuid())
+  meetingId String
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation("UserMeetingMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  text      String
+  createdAt DateTime @default(now())
+
+  @@index([meetingId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model UserPresence {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          String   @default("online") // "online" | "away" | "busy" | "offline"
+  customStatus    String?  // e.g. "Working on visual canvas"
+  currentActivity String?  // "voice_call" | "video_call" | "meeting" | "idle"
+  lastSeen        DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+

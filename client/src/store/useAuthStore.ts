@@ -1,7 +1,14 @@
 import { create } from 'zustand';
 import { User } from '../types';
 import { firebaseAuth, googleProvider, isFirebaseConfigured } from '../firebase';
-import { signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
+import {
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
+  signOut as firebaseSignOut,
+} from 'firebase/auth';
 
 const API_BASE = '/api';
 
@@ -105,6 +112,37 @@ interface AuthState {
   logout: () => Promise<void>;
 }
 
+function formatFirebaseAuthError(err: any): string {
+  const code = err?.code || '';
+  switch (code) {
+    case 'auth/email-already-in-use':
+      return 'This email address is already registered. Please sign in instead.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/operation-not-allowed':
+      return 'Email/Password sign-in is not enabled in your Firebase console.';
+    case 'auth/weak-password':
+      return 'The password is too weak. Please use at least 6 characters.';
+    case 'auth/user-disabled':
+      return 'This user account has been disabled.';
+    case 'auth/user-not-found':
+      return 'No account exists with this email address.';
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+    case 'auth/invalid-login-credentials':
+      return 'Invalid email or password. Please verify your credentials.';
+    case 'auth/too-many-requests':
+      return 'Access temporarily blocked due to many failed attempts. Try again later or reset your password.';
+    case 'auth/network-request-failed':
+      return 'Network error. Please check your internet connection.';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'Sign-in cancelled';
+    default:
+      return err?.message || 'Authentication failed. Please try again.';
+  }
+}
+
 const isLocalAuthFallback = !isFirebaseConfigured && !(
   Boolean(import.meta.env.VITE_SUPABASE_URL) && Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY)
 );
@@ -130,6 +168,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           unsubscribe();
           if (fbUser) {
             const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
+              id: fbUser.uid,
               email: fbUser.email ?? '',
               name: fbUser.displayName ?? fbUser.email?.split('@')[0] ?? 'User',
               avatarUrl: fbUser.photoURL ?? undefined,
@@ -166,6 +205,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const googleId = session.user.identities?.find((id: any) => id.provider === 'google')?.id || session.user.id;
 
         const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
+          id: session.user.id,
           email,
           name,
           avatarUrl,
@@ -220,6 +260,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const fbUser = result.user;
 
         const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
+          id: fbUser.uid,
           email: fbUser.email ?? '',
           name: fbUser.displayName ?? fbUser.email?.split('@')[0] ?? 'User',
           avatarUrl: fbUser.photoURL ?? undefined,
@@ -231,13 +272,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ user: syncedUser, isAuthenticated: true, isLoading: false, needsUsernameSetup });
         return { success: true };
       } catch (err: any) {
-        // User closed the popup — not an error worth showing
         if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
           set({ isLoading: false });
           return { success: false, error: 'Sign-in cancelled' };
         }
-        set({ isLoading: false, error: err.message });
-        return { success: false, error: err.message };
+        const friendlyMessage = formatFirebaseAuthError(err);
+        set({ isLoading: false, error: friendlyMessage });
+        return { success: false, error: friendlyMessage };
       }
     }
 
@@ -362,8 +403,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // ── Sign in with Email / Password ─────────────────────────────────────────
   login: async (email: string, password: string) => {
     set({ isLoading: true, error: null });
-    const sb = await getSupabase();
 
+    // 1. Firebase path (preferred)
+    if (isFirebaseConfigured && firebaseAuth) {
+      try {
+        const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
+        const fbUser = cred.user;
+
+        const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
+          id: fbUser.uid,
+          email: fbUser.email ?? email,
+          name: fbUser.displayName ?? email.split('@')[0],
+          avatarUrl: fbUser.photoURL ?? undefined,
+          googleId: fbUser.uid,
+          isDev: false,
+        });
+
+        persist(syncedUser);
+        set({ user: syncedUser, isAuthenticated: true, isLoading: false, needsUsernameSetup });
+        return { success: true };
+      } catch (err: any) {
+        const friendlyMessage = formatFirebaseAuthError(err);
+        set({ isLoading: false, error: friendlyMessage });
+        return { success: false, error: friendlyMessage };
+      }
+    }
+
+    // 2. Supabase path (fallback)
+    const sb = await getSupabase();
     if (sb) {
       const { data, error } = await sb.auth.signInWithPassword({ email, password });
       if (error || !data.user) {
@@ -384,7 +451,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return { success: true };
     }
 
-    // ── Dev fallback ──
+    // 3. Dev fallback
     if (!email || !password) {
       set({ isLoading: false, error: 'Email and password are required' });
       return { success: false, error: 'Email and password are required' };
@@ -404,8 +471,47 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // ── Register ─────────────────────────────────────────────────────────────
   register: async (name: string, email: string, password: string) => {
     set({ isLoading: true, error: null });
-    const sb = await getSupabase();
 
+    // 1. Firebase path (preferred)
+    if (isFirebaseConfigured && firebaseAuth) {
+      try {
+        const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+        const fbUser = cred.user;
+
+        if (name && fbUser) {
+          try {
+            await updateProfile(fbUser, { displayName: name });
+          } catch (profileErr) {
+            console.warn('Could not set displayName on Firebase user:', profileErr);
+          }
+        }
+
+        const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
+          id: fbUser.uid,
+          email: fbUser.email ?? email,
+          name: name || fbUser.displayName || email.split('@')[0],
+          avatarUrl: fbUser.photoURL ?? undefined,
+          googleId: fbUser.uid,
+          isDev: false,
+        });
+
+        persist(syncedUser);
+        set({
+          user: syncedUser,
+          isAuthenticated: true,
+          isLoading: false,
+          needsUsernameSetup,
+        });
+        return { success: true };
+      } catch (err: any) {
+        const friendlyMessage = formatFirebaseAuthError(err);
+        set({ isLoading: false, error: friendlyMessage });
+        return { success: false, error: friendlyMessage };
+      }
+    }
+
+    // 2. Supabase path (fallback)
+    const sb = await getSupabase();
     if (sb) {
       const { data, error } = await sb.auth.signUp({
         email,
@@ -433,7 +539,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return { success: true };
     }
 
-    // ── Dev fallback ──
+    // 3. Dev fallback
     const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
       email,
       name,
@@ -447,12 +553,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   // ── Reset Password ───────────────────────────────────────────────────────
   resetPassword: async (email: string) => {
+    // 1. Firebase path (preferred)
+    if (isFirebaseConfigured && firebaseAuth) {
+      try {
+        await sendPasswordResetEmail(firebaseAuth, email);
+        return { success: true, message: 'Password reset link sent to your email address.' };
+      } catch (err: any) {
+        const friendlyMessage = formatFirebaseAuthError(err);
+        return { success: false, error: friendlyMessage };
+      }
+    }
+
+    // 2. Supabase path (fallback)
     const sb = await getSupabase();
     if (sb) {
       const { error } = await sb.auth.resetPasswordForEmail(email);
       if (error) return { success: false, error: error.message };
       return { success: true, message: 'Password reset link sent to your email.' };
     }
+
+    // 3. Dev fallback
     return { success: true, message: 'Password reset email simulated for dev.' };
   },
 

@@ -25,9 +25,11 @@ import {
   Bot,
   Send,
   Globe,
+  Video,
 } from 'lucide-react';
 import { useProjectStore } from '../store/useProjectStore';
 import { useModuleStore } from '../store/useModuleStore';
+import { useCommunicationStore } from '../store/useCommunicationStore';
 import { ExportProjectModal } from '../components/ExportProjectModal';
 
 export const VisualBuilderPage: React.FC = () => {
@@ -203,6 +205,22 @@ export const VisualBuilderPage: React.FC = () => {
               <span>{saveMessage}</span>
             </div>
           )}
+
+          <button
+            onClick={() => {
+              if (currentProject) {
+                useCommunicationStore.getState().startMeeting(`Live Canvas: ${currentProject.name}`, {
+                  projectId: currentProject.id,
+                  teamId: currentProject.teamId || undefined,
+                });
+              }
+            }}
+            className="px-3.5 py-2 rounded-xl bg-white hover:bg-[#EAF3EF] text-[#202524] font-bold text-xs border border-[#E2E6E4] hover:border-[#1F5E4B]/40 flex items-center gap-1.5 transition shadow-xs"
+            title="Start Live Video/Audio Huddle with Screen Sharing"
+          >
+            <Video className="w-3.5 h-3.5 text-[#1F5E4B]" />
+            <span>Live Huddle</span>
+          </button>
 
           <button
             onClick={saveCurrentProject}

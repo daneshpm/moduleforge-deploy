@@ -1,7 +1,7 @@
 import { Response } from 'express';
 
 export interface RealtimeProjectEvent {
-  type: 'MODULE_UPDATED' | 'ACTIVITY_CREATED' | 'PROJECT_SYNCED' | 'ROLLBACK_COMPLETED' | 'MEMBER_JOINED' | 'JOIN_REQUESTED' | 'MEMBER_APPROVED' | 'MEMBER_REJECTED';
+  type: 'MODULE_UPDATED' | 'ACTIVITY_CREATED' | 'PROJECT_SYNCED' | 'ROLLBACK_COMPLETED' | 'MEMBER_JOINED' | 'JOIN_REQUESTED' | 'MEMBER_APPROVED' | 'MEMBER_REJECTED' | 'CHANNEL_MESSAGE' | 'MEETING_STARTED' | 'MEETING_ENDED';
   projectId: string;
   moduleId?: string;
   moduleName?: string;
@@ -9,14 +9,17 @@ export interface RealtimeProjectEvent {
   author?: string;
   message?: string;
   status?: string;
+  memberId?: string;
   data?: any;
   timestamp: string;
 }
 
 export interface RealtimeNotificationEvent {
-  type: 'NOTIFICATION_RECEIVED' | 'INVITATION_STATUS_CHANGED';
+  type: 'NOTIFICATION_RECEIVED' | 'INVITATION_STATUS_CHANGED' | 'INCOMING_CALL' | 'CALL_STATUS_CHANGED' | 'DIRECT_MESSAGE';
   userId: string;
   notification?: any;
+  call?: any;
+  message?: any;
   unreadCount?: number;
   timestamp: string;
 }
