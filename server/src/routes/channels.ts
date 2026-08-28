@@ -164,10 +164,13 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
-const attachmentStorageDir = path.join(__dirname, '..', '..', 'uploads', 'attachments');
-if (!fs.existsSync(attachmentStorageDir)) {
+const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+const attachmentStorageDir = isVercel
+  ? path.join('/tmp', 'uploads', 'attachments')
+  : path.join(__dirname, '..', '..', 'uploads', 'attachments');
+try {
   fs.mkdirSync(attachmentStorageDir, { recursive: true });
-}
+} catch (_) {}
 
 const attachmentUpload = multer({
   storage: multer.diskStorage({

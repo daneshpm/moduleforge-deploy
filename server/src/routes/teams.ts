@@ -177,8 +177,8 @@ teamsRouter.get('/', async (req, res) => {
 
     res.json({ teams: formattedTeams });
   } catch (error: any) {
-    console.error('Error listing teams:', error);
-    res.status(500).json({ error: error.message || 'Failed to list teams' });
+    console.error('Error listing teams (using fallback):', error);
+    res.json({ teams: [], isFallback: true });
   }
 });
 

@@ -24,9 +24,10 @@ projectsRouter.get('/', async (req, res) => {
       },
     });
 
-    res.json(projects);
+    res.json(projects || []);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error('Error fetching projects (fallback to empty list):', error.message);
+    res.json([]);
   }
 });
 
