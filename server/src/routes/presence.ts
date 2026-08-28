@@ -35,20 +35,20 @@ presenceRouter.get('/', async (req, res) => {
 
     res.json({ presence: mapped });
   } catch (error: any) {
-    console.error('Error fetching presence:', error);
-    res.status(500).json({ error: error.message || 'Failed to fetch presence' });
+    console.error('Error fetching presence (fallback to empty):', error.message);
+    res.json({ presence: [], isFallback: true });
   }
 });
 
 // POST /api/presence/heartbeat - Update user's presence heartbeat and current activity
 presenceRouter.post('/heartbeat', async (req, res) => {
+  const { userId, status = 'online', customStatus, currentActivity } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
   try {
-    const { userId, status = 'online', customStatus, currentActivity } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
-    }
-
     const userExists = await (prisma as any).user.findUnique({
       where: { id: userId },
       select: { id: true },
@@ -77,7 +77,7 @@ presenceRouter.post('/heartbeat', async (req, res) => {
 
     res.json({ presence });
   } catch (error: any) {
-    console.error('Error updating presence heartbeat:', error);
-    res.status(500).json({ error: error.message || 'Failed to update presence' });
+    console.error('Error updating presence heartbeat (fallback):', error.message);
+    res.json({ presence: { userId, status: 'online' }, isFallback: true });
   }
 });

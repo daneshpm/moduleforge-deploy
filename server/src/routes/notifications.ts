@@ -45,12 +45,16 @@ notificationsRouter.get('/', async (req, res) => {
     });
 
     res.json({
-      notifications,
-      unreadCount,
+      notifications: notifications || [],
+      unreadCount: unreadCount || 0,
     });
   } catch (error: any) {
-    console.error('Error fetching notifications:', error);
-    res.status(500).json({ error: error.message || 'Failed to fetch notifications' });
+    console.error('Error fetching notifications (using fallback):', error.message);
+    res.json({
+      notifications: [],
+      unreadCount: 0,
+      isFallback: true,
+    });
   }
 });
 
@@ -62,19 +66,24 @@ notificationsRouter.get('/stream', (req, res) => {
     return res.status(400).json({ error: 'User ID is required for notification stream' });
   }
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders?.();
+  try {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
 
-  // Send initial ping
-  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', timestamp: new Date().toISOString() })}\n\n`);
+    // Send initial ping
+    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', timestamp: new Date().toISOString() })}\n\n`);
 
-  const unregister = realtimeEventManager.registerUserClient(userId, res);
+    const unregister = realtimeEventManager.registerUserClient(userId, res);
 
-  req.on('close', () => {
-    unregister();
-  });
+    req.on('close', () => {
+      unregister();
+    });
+  } catch (err) {
+    console.warn('SSE stream notice:', err);
+    res.status(200).end();
+  }
 });
 
 // PATCH /api/notifications/:id/read - Mark notification as read

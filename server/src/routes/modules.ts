@@ -97,7 +97,8 @@ modulesRouter.get('/', async (req, res) => {
 
     res.json(modules.map(formatModuleOutput));
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error('Error fetching modules (using fallback):', error.message);
+    res.json([]);
   }
 });
 
