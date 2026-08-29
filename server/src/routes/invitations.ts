@@ -34,6 +34,35 @@ invitationsRouter.get('/:token', async (req, res) => {
     });
 
     if (!invitation) {
+      const projectMember = await prisma.projectMember.findUnique({
+        where: { inviteToken: token },
+        include: {
+          project: {
+            include: {
+              user: { select: { id: true, name: true, username: true } },
+              modules: { include: { module: true } },
+            },
+          },
+        },
+      });
+
+      if (projectMember) {
+        return res.json({
+          valid: projectMember.status === 'pending',
+          isProjectInvite: true,
+          projectInvite: {
+            id: projectMember.id,
+            projectId: projectMember.project.id,
+            projectName: projectMember.project.name,
+            projectDescription: projectMember.project.description,
+            ownerName: projectMember.project.user?.name || 'Project Owner',
+            modulesCount: projectMember.project.modules.length,
+            inviteeEmail: projectMember.email,
+            role: projectMember.role,
+          },
+        });
+      }
+
       return res.status(404).json({
         valid: false,
         error: 'Invalid or unknown invitation link.',
@@ -98,7 +127,42 @@ invitationsRouter.post('/:token/accept', async (req, res) => {
     });
 
     if (!invitation) {
-      return res.status(404).json({ error: 'Invitation not found' });
+      const projectMember = await prisma.projectMember.findUnique({
+        where: { inviteToken: token },
+        include: { project: true },
+      });
+
+      if (projectMember) {
+        await prisma.projectMember.update({
+          where: { id: projectMember.id },
+          data: {
+            status: 'accepted',
+            acceptedAt: new Date(),
+            userId: user.id,
+          },
+        });
+
+        const displayName = user.name || user.username || user.email;
+        try {
+          await prisma.projectActivity.create({
+            data: {
+              projectId: projectMember.projectId,
+              action: 'member_joined',
+              actorName: displayName,
+              description: `${displayName} accepted invitation and joined as ${projectMember.role}`,
+            },
+          });
+        } catch (_) {}
+
+        return res.json({
+          success: true,
+          isProject: true,
+          projectId: projectMember.projectId,
+          message: `Successfully joined project ${projectMember.project.name}`,
+        });
+      }
+
+      return res.status(404).json({ error: 'Invitation not found or has been revoked' });
     }
 
     if (invitation.status === 'accepted') {

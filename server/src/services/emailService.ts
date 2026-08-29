@@ -37,6 +37,15 @@ export interface SendInviteResult {
   error?: string;
 }
 
+function cleanBaseUrl(inputUrl?: string): string {
+  let url = (inputUrl || process.env.APP_URL || 'https://moduleforge-deploy-pearl.vercel.app').trim();
+  url = url.replace(/\/+$/, '');
+  if (url.includes('localhost') || url.includes('127.0.0.1') || url.startsWith('http://localhost')) {
+    url = 'https://moduleforge-deploy-pearl.vercel.app';
+  }
+  return url;
+}
+
 class EmailService {
   private transporter: nodemailer.Transporter | null = null;
 
@@ -45,8 +54,8 @@ class EmailService {
   }
 
   private getTransporter(): nodemailer.Transporter | null {
-    const gmailUser = (process.env.GMAIL_USER || process.env.SMTP_USER || '').trim();
-    const gmailPass = (process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || '').replace(/\s+/g, '').trim();
+    const gmailUser = (process.env.GMAIL_USER || process.env.SMTP_USER || process.env.EMAIL_USER || '').trim();
+    const gmailPass = (process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || process.env.EMAIL_PASS || '').replace(/\s+/g, '').trim();
     const smtpHost = process.env.SMTP_HOST;
     const smtpPort = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587;
 
@@ -77,7 +86,7 @@ class EmailService {
 
   public async sendProjectInvitation(params: SendInviteParams): Promise<SendInviteResult> {
     const { to, projectName, inviterName = 'Project Owner', role, inviteToken } = params;
-    const baseUrl = params.appUrl || process.env.APP_URL || 'http://localhost:5173';
+    const baseUrl = cleanBaseUrl(params.appUrl);
     const inviteLink = `${baseUrl}/join-project?token=${inviteToken}`;
 
     const subject = `You've been invited to join "${projectName}" on ModuleForge`;
@@ -150,7 +159,7 @@ class EmailService {
 
   public async sendTeamInvitation(params: SendTeamInviteParams): Promise<SendInviteResult> {
     const { to, teamName, inviterName = 'Team Owner', inviterUsername, role = 'member', inviteToken } = params;
-    const baseUrl = params.appUrl || process.env.APP_URL || 'http://localhost:5173';
+    const baseUrl = cleanBaseUrl(params.appUrl);
     const inviteLink = `${baseUrl}/invite/${inviteToken}`;
 
     const inviterDisplay = inviterUsername ? `${inviterName} (@${inviterUsername.replace(/^@/, '')})` : inviterName;

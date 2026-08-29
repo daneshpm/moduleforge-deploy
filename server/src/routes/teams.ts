@@ -642,6 +642,12 @@ teamsRouter.post('/:teamId/invitations/email', async (req, res) => {
     }
 
     // Deliver email invitation
+    const rawOrigin = req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : undefined);
+    let appUrl = (process.env.APP_URL || rawOrigin || 'https://moduleforge-deploy-pearl.vercel.app').replace(':5000', ':5173');
+    if (appUrl.includes('localhost') || appUrl.includes('127.0.0.1')) {
+      appUrl = 'https://moduleforge-deploy-pearl.vercel.app';
+    }
+
     const emailResult = await emailService.sendTeamInvitation({
       to: cleanEmail,
       teamName: team.name,
@@ -649,7 +655,7 @@ teamsRouter.post('/:teamId/invitations/email', async (req, res) => {
       inviterUsername: inviter.username || undefined,
       role: invitation.role,
       inviteToken: token,
-      appUrl: req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : undefined),
+      appUrl,
     });
 
     res.status(201).json({

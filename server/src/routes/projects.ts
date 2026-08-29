@@ -1352,7 +1352,13 @@ projectsRouter.post('/:id/members', async (req, res) => {
     }
 
     // Send Email to invitee
-    const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`.replace(':5000', ':5173');
+    const rawOrigin = req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : undefined);
+    let appUrl = (process.env.APP_URL || rawOrigin || 'https://moduleforge-deploy-pearl.vercel.app')
+      .replace(':5000', ':5173');
+    if (appUrl.includes('localhost') || appUrl.includes('127.0.0.1')) {
+      appUrl = 'https://moduleforge-deploy-pearl.vercel.app';
+    }
+
     const emailRes = await emailService.sendProjectInvitation({
       to: email.toLowerCase(),
       projectName: project.name,
@@ -1377,7 +1383,7 @@ projectsRouter.post('/:id/members', async (req, res) => {
       success: true,
       member,
       inviteToken,
-      inviteLink,
+      inviteLink: emailRes.inviteLink || inviteLink,
       gmailComposeUrl: emailRes.gmailComposeUrl,
       mailtoUrl: emailRes.mailtoUrl,
       emailSent: emailRes.success,
@@ -1436,7 +1442,7 @@ projectsRouter.get('/invites/validate', async (req, res) => {
 // POST /api/projects/invites/accept - Accept Invitation and Join Project
 projectsRouter.post('/invites/accept', async (req, res) => {
   try {
-    const { token, userName } = req.body;
+    const { token, userName, userId } = req.body;
     if (!token) {
       return res.status(400).json({ error: 'Invite token is required' });
     }
@@ -1456,6 +1462,7 @@ projectsRouter.post('/invites/accept', async (req, res) => {
       data: {
         status: 'accepted',
         acceptedAt: new Date(),
+        ...(userId ? { userId } : {}),
       },
       include: { project: true },
     });

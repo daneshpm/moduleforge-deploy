@@ -1,16 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, useParams, useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
 import {
   Users,
+  FolderGit2,
   CheckCircle2,
   AlertCircle,
-  ArrowRight,
   ShieldCheck,
-  Clock,
-  Sparkles,
   Layers,
   Check,
-  X,
   LogIn,
   Loader2,
 } from 'lucide-react';
@@ -33,6 +30,17 @@ interface TeamInviteDetails {
   expiresAt: string;
 }
 
+interface ProjectInviteDetails {
+  id: string;
+  projectId: string;
+  projectName: string;
+  projectDescription?: string;
+  ownerName: string;
+  modulesCount: number;
+  inviteeEmail: string;
+  role: string;
+}
+
 export const AcceptInvitePage: React.FC = () => {
   const params = useParams<{ token?: string }>();
   const [searchParams] = useSearchParams();
@@ -46,14 +54,17 @@ export const AcceptInvitePage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [teamInvite, setTeamInvite] = useState<TeamInviteDetails | null>(null);
+  const [projectInvite, setProjectInvite] = useState<ProjectInviteDetails | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [acceptedSuccess, setAcceptedSuccess] = useState(false);
+  const [successRedirectMessage, setSuccessRedirectMessage] = useState('Redirecting to your workspace...');
 
-  // Validate Invitation Token
+  // Validate Invitation Token or Join Code
   useEffect(() => {
     const validate = async () => {
-      if (!tokenParam) {
+      if (!tokenParam && !codeParam) {
         setIsLoading(false);
+        setError('No invitation token or project code provided.');
         return;
       }
 
@@ -61,23 +72,52 @@ export const AcceptInvitePage: React.FC = () => {
       setError(null);
 
       try {
-        const res = await fetch(`/api/invitations/${tokenParam}`);
-        const data = await res.json();
+        if (tokenParam) {
+          const res = await fetch(`/api/invitations/${tokenParam}`);
+          const data = await res.json();
 
-        if (res.ok && data.invitation) {
-          setTeamInvite(data.invitation);
-          if (data.isExpired) {
-            setError('This invitation has expired (7-day validity exceeded). Please ask the team administrator for a new invite.');
+          if (res.ok && data.invitation) {
+            setTeamInvite(data.invitation);
+            if (data.isExpired) {
+              setError('This invitation has expired (7-day validity exceeded). Please ask the team administrator for a new invite.');
+            }
+          } else if (res.ok && data.projectInvite) {
+            setProjectInvite(data.projectInvite);
+          } else {
+            // Check fallback for project invite token
+            const projRes = await fetch(`/api/projects/invites/validate?token=${tokenParam}`);
+            const projData = await projRes.json();
+            if (projRes.ok && projData.project) {
+              setProjectInvite({
+                id: projData.member?.id || '',
+                projectId: projData.project.id,
+                projectName: projData.project.name,
+                projectDescription: projData.project.description,
+                ownerName: projData.project.ownerName,
+                modulesCount: projData.project.modulesCount || 0,
+                inviteeEmail: projData.member?.email || '',
+                role: projData.member?.role || 'developer',
+              });
+            } else {
+              setError(data.error || projData.error || 'Invalid or expired invitation link.');
+            }
           }
-        } else {
-          // Check fallback for project invite token
-          const projRes = await fetch(`/api/projects/invites/validate?token=${tokenParam}`);
-          const projData = await projRes.json();
-          if (projRes.ok && projData.project) {
-            navigate(`/join-project?token=${tokenParam}`);
-            return;
+        } else if (codeParam) {
+          const codeRes = await validateJoinCode(codeParam);
+          if (codeRes.valid && codeRes.project) {
+            setProjectInvite({
+              id: '',
+              projectId: codeRes.project.id,
+              projectName: codeRes.project.name,
+              projectDescription: codeRes.project.description,
+              ownerName: codeRes.project.user?.name || 'Project Owner',
+              modulesCount: codeRes.project.modules?.length || 0,
+              inviteeEmail: '',
+              role: 'developer',
+            });
+          } else {
+            setError(codeRes.error || 'Invalid project join code.');
           }
-          setError(data.error || 'Invalid or unknown invitation link.');
         }
       } catch (err: any) {
         setError(err.message || 'Failed to validate invitation');
@@ -87,30 +127,66 @@ export const AcceptInvitePage: React.FC = () => {
     };
 
     validate();
-  }, [tokenParam, navigate]);
+  }, [tokenParam, codeParam, validateJoinCode]);
 
   const handleAccept = async () => {
-    if (!tokenParam || !user) return;
+    if (!user) return;
     setIsSubmitting(true);
     setError(null);
 
     try {
-      const res = await fetch(`/api/invitations/${tokenParam}/accept`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id }),
-      });
+      if (projectInvite && tokenParam) {
+        const res = await fetch('/api/projects/invites/accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: tokenParam,
+            userName: user.name || user.username || user.email,
+            userId: user.id,
+          }),
+        });
 
-      const data = await res.json();
-      setIsSubmitting(false);
+        const data = await res.json();
+        setIsSubmitting(false);
 
-      if (res.ok) {
-        setAcceptedSuccess(true);
-        setTimeout(() => {
-          navigate(data.teamId ? `/teams/${data.teamId}` : '/teams');
-        }, 1500);
-      } else {
-        setError(data.error || 'Failed to accept invitation');
+        if (res.ok) {
+          setAcceptedSuccess(true);
+          setSuccessRedirectMessage(`Successfully joined ${projectInvite.projectName}! Redirecting to Projects...`);
+          setTimeout(() => {
+            navigate('/projects');
+          }, 1500);
+        } else {
+          setError(data.error || 'Failed to accept project invitation');
+        }
+        return;
+      }
+
+      if (tokenParam) {
+        const res = await fetch(`/api/invitations/${tokenParam}/accept`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id }),
+        });
+
+        const data = await res.json();
+        setIsSubmitting(false);
+
+        if (res.ok) {
+          setAcceptedSuccess(true);
+          if (data.isProject) {
+            setSuccessRedirectMessage('Successfully joined project! Redirecting to Projects...');
+            setTimeout(() => {
+              navigate('/projects');
+            }, 1500);
+          } else {
+            setSuccessRedirectMessage(`Welcome to ${teamInvite?.teamName || 'the team'}! Redirecting to team workspace...`);
+            setTimeout(() => {
+              navigate(data.teamId ? `/teams/${data.teamId}` : '/teams');
+            }, 1500);
+          }
+        } else {
+          setError(data.error || 'Failed to accept invitation');
+        }
       }
     } catch (err: any) {
       setIsSubmitting(false);
@@ -119,18 +195,16 @@ export const AcceptInvitePage: React.FC = () => {
   };
 
   const handleDecline = async () => {
-    if (!tokenParam) return;
-    setIsSubmitting(true);
-    try {
-      await fetch(`/api/invitations/${tokenParam}/decline`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user?.id }),
-      });
-      navigate('/dashboard');
-    } catch {
-      navigate('/dashboard');
+    if (tokenParam) {
+      try {
+        await fetch(`/api/invitations/${tokenParam}/decline`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user?.id }),
+        });
+      } catch (_) {}
     }
+    navigate('/dashboard');
   };
 
   return (
@@ -147,7 +221,9 @@ export const AcceptInvitePage: React.FC = () => {
           <h1 className="text-2xl font-black text-[#202524] tracking-tight">
             ModuleForge
           </h1>
-          <p className="text-xs text-[#6B7471] font-mono">Team Collaboration Invitation</p>
+          <p className="text-xs text-[#6B7471] font-mono">
+            {projectInvite ? 'Project Collaboration Invitation' : 'Team Workspace Invitation'}
+          </p>
         </div>
 
         {/* Main Card */}
@@ -179,12 +255,107 @@ export const AcceptInvitePage: React.FC = () => {
                 <CheckCircle2 className="w-8 h-8" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-lg font-bold text-[#202524]">Welcome to the Team!</h3>
+                <h3 className="text-lg font-bold text-[#202524]">Welcome!</h3>
                 <p className="text-xs text-[#6B7471]">
-                  You have successfully joined <span className="font-bold text-[#1F5E4B]">{teamInvite?.teamName}</span>. Redirecting to team workspace...
+                  {successRedirectMessage}
                 </p>
               </div>
               <Loader2 className="w-5 h-5 text-[#1F5E4B] animate-spin mx-auto" />
+            </div>
+          ) : projectInvite ? (
+            <div className="space-y-6">
+              {/* Project Profile Header */}
+              <div className="flex items-center gap-4 p-4 rounded-2xl bg-[#F7F8F7] border border-[#E2E6E4]">
+                <div className="w-14 h-14 rounded-2xl bg-[#EAF3EF] border border-[#1F5E4B]/20 text-[#1F5E4B] flex items-center justify-center shrink-0">
+                  <FolderGit2 className="w-7 h-7" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-mono font-bold uppercase text-[#1F5E4B] tracking-wider block">
+                    You've been invited to join project
+                  </span>
+                  <h2 className="text-lg font-black text-[#202524] truncate">{projectInvite.projectName}</h2>
+                  <p className="text-xs text-[#6B7471] line-clamp-1">
+                    {projectInvite.projectDescription || 'Modular full-stack application.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Project Details */}
+              <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                <div className="p-3 rounded-xl bg-[#F7F8F7] border border-[#E2E6E4]">
+                  <span className="text-[#6B7471] block text-[10px] uppercase">Project Owner</span>
+                  <span className="font-bold text-[#202524] truncate block">
+                    {projectInvite.ownerName}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#F7F8F7] border border-[#E2E6E4]">
+                  <span className="text-[#6B7471] block text-[10px] uppercase">Assigned Role</span>
+                  <span className="font-bold text-[#1F5E4B] capitalize block text-sm">
+                    {projectInvite.role}
+                  </span>
+                  <span className="text-[#6B7471] text-[10px] block">
+                    {projectInvite.modulesCount} linked module(s)
+                  </span>
+                </div>
+              </div>
+
+              {/* Login State check */}
+              {!isAuthenticated ? (
+                <div className="space-y-4 pt-2 border-t border-[#E2E6E4]">
+                  <div className="p-3.5 rounded-xl bg-[#EAF3EF] border border-[#1F5E4B]/20 text-xs text-[#1F5E4B] space-y-1">
+                    <span className="font-bold block">Sign in required</span>
+                    <p className="text-[11px] text-[#6B7471]">
+                      Please sign in to your account to accept this project invitation.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => loginWithGoogle()}
+                    className="w-full py-3.5 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] text-white font-bold text-xs shadow-md shadow-[#1F5E4B]/20 flex items-center justify-center gap-2 transition"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span>Sign in with Google to Accept</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3 pt-2 border-t border-[#E2E6E4]">
+                  <div className="flex items-center justify-between text-xs text-[#6B7471] px-1">
+                    <span>Joining as:</span>
+                    <span className="font-bold text-[#202524] font-mono">
+                      {user?.name} (@{user?.username || 'user'})
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleDecline}
+                      disabled={isSubmitting}
+                      className="w-1/3 py-3 rounded-xl bg-[#F7F8F7] hover:bg-[#FDF3F3] text-[#6B7471] hover:text-[#C94A4A] border border-[#E2E6E4] text-xs font-semibold transition"
+                    >
+                      Decline
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleAccept}
+                      disabled={isSubmitting}
+                      className="w-2/3 py-3 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-[#1F5E4B]/20 flex items-center justify-center gap-2 transition"
+                    >
+                      {isSubmitting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Join Project →</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : teamInvite ? (
             <div className="space-y-6">
