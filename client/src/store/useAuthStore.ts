@@ -289,7 +289,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/dashboard`,
-          queryParams: { prompt: 'select_account', access_type: 'offline' },
+          queryParams: { access_type: 'offline' },
         },
       });
       if (error) {
@@ -311,12 +311,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   ) => {
     set({ isLoading: true, error: null });
 
-    // If no credentials provided (dev fallback with no Supabase), prompt user
-    const devEmail = email || window.prompt('Dev mode: Enter your email to simulate Google login') || '';
-    if (!devEmail) {
-      set({ isLoading: false });
-      return { success: false, error: 'No email provided' };
-    }
+    const devEmail = email || 'developer@moduleforge.local';
     const devName = name || devEmail.split('@')[0];
 
     try {

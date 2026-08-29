@@ -22,7 +22,4 @@ const app = isConfigured
 export const firebaseAuth = app ? getAuth(app) : null;
 export const googleProvider = new GoogleAuthProvider();
 
-// Always show account picker even if already signed in
-googleProvider.setCustomParameters({ prompt: 'select_account' });
-
 export { isConfigured as isFirebaseConfigured };
