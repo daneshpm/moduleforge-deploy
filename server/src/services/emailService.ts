@@ -54,8 +54,8 @@ class EmailService {
   }
 
   private getTransporter(): nodemailer.Transporter | null {
-    const gmailUser = (process.env.GMAIL_USER || process.env.SMTP_USER || process.env.EMAIL_USER || '').trim();
-    const gmailPass = (process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || process.env.EMAIL_PASS || '').replace(/\s+/g, '').trim();
+    const gmailUser = (process.env.GMAIL_USER || process.env.SMTP_USER || process.env.EMAIL_USER || 'shalyagaonkar@gmail.com').trim();
+    const gmailPass = (process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || process.env.EMAIL_PASS || 'qqqzitiyzyhgvagy').replace(/\s+/g, '').trim();
     const smtpHost = process.env.SMTP_HOST;
     const smtpPort = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587;
 
@@ -247,7 +247,7 @@ class EmailService {
     inviteLink: string
   ): Promise<SendInviteResult> {
     const transporter = this.getTransporter();
-    const gmailUser = (process.env.GMAIL_USER || process.env.SMTP_USER || '').trim();
+    const gmailUser = (process.env.GMAIL_USER || process.env.SMTP_USER || process.env.EMAIL_USER || 'shalyagaonkar@gmail.com').trim();
 
     try {
       if (transporter && gmailUser) {
