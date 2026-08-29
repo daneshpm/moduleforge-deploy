@@ -17,10 +17,12 @@ import {
   Check,
 } from 'lucide-react';
 import { useModuleStore } from '../store/useModuleStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { Module } from '../types';
 
 export const MyModulesPage: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const { modules, fetchModules, deleteModule, updateModule } = useModuleStore();
 
   const [deletingModule, setDeletingModule] = useState<Module | null>(null);
@@ -139,14 +141,26 @@ export const MyModulesPage: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-[#E2E6E4]">
-            {modules.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="p-8 text-center text-[#6B7471] font-mono">
-                  No modules published yet.
-                </td>
-              </tr>
-            ) : (
-              modules.map((mod) => (
+            {(() => {
+              const myModules = modules.filter(
+                (mod) =>
+                  (mod.authorId && user?.id && mod.authorId === user.id) ||
+                  (mod.author && user?.username && mod.author.toLowerCase() === user.username.toLowerCase()) ||
+                  (mod.author && user?.name && mod.author.toLowerCase() === user.name.toLowerCase()) ||
+                  (mod.author && user?.email && mod.author.toLowerCase() === user.email.toLowerCase())
+              );
+
+              if (myModules.length === 0) {
+                return (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-[#6B7471] font-mono">
+                      No modules published by you yet.
+                    </td>
+                  </tr>
+                );
+              }
+
+              return myModules.map((mod) => (
                 <tr key={mod.id} className="hover:bg-[#EAF3EF]/30 transition">
                   <td className="p-4 font-bold text-[#202524] flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-[#EAF3EF] border border-[#1F5E4B]/20 flex items-center justify-center shrink-0">
@@ -219,8 +233,8 @@ export const MyModulesPage: React.FC = () => {
                     </button>
                   </td>
                 </tr>
-              ))
-            )}
+              ));
+            })()}
           </tbody>
         </table>
       </div>

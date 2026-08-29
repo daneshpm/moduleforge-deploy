@@ -13,7 +13,18 @@ export const projectsRouter = Router();
 // GET /api/projects - List user projects
 projectsRouter.get('/', async (req, res) => {
   try {
+    const userId = (req.query.userId || req.headers['x-user-id']) as string | undefined;
+
+    const whereClause: any = {};
+    if (userId) {
+      whereClause.OR = [
+        { userId },
+        { members: { some: { userId } } },
+      ];
+    }
+
     const projects = await prisma.project.findMany({
+      where: whereClause,
       orderBy: { updatedAt: 'desc' },
       include: {
         modules: {
@@ -37,6 +48,10 @@ projectsRouter.post('/', async (req, res) => {
     const {
       name,
       description,
+      userId: bodyUserId,
+      teamId,
+      userEmail,
+      userName,
       projectType = 'individual',
       visibility = 'private',
       gitRepositoryUrl,
@@ -45,6 +60,8 @@ projectsRouter.post('/', async (req, res) => {
       gitBranch = 'main',
       teamRepos = [],
     } = req.body;
+
+    const userId = bodyUserId || (req.headers['x-user-id'] as string | undefined);
 
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Project name is required' });
@@ -66,6 +83,8 @@ projectsRouter.post('/', async (req, res) => {
       data: {
         name: name.trim(),
         description: description || '',
+        userId: userId || null,
+        teamId: teamId || null,
         projectType: projectType === 'team' ? 'team' : 'individual',
         visibility: visibility === 'public' ? 'public' : 'private',
         joinCode,
@@ -85,6 +104,21 @@ projectsRouter.post('/', async (req, res) => {
         members: true,
       },
     });
+
+    if (userId) {
+      try {
+        await prisma.projectMember.create({
+          data: {
+            projectId: project.id,
+            userId,
+            email: userEmail || 'developer@moduleforge.local',
+            name: userName || 'Developer',
+            role: 'owner',
+            status: 'accepted',
+          },
+        });
+      } catch (_) {}
+    }
 
     // If team project & teamRepos array provided, auto-create & link team modules!
     if (Array.isArray(teamRepos) && teamRepos.length > 0) {

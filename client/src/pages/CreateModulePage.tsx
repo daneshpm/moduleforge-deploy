@@ -15,6 +15,7 @@ import {
   Globe,
 } from 'lucide-react';
 import { useModuleStore } from '../store/useModuleStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { ValidationResult } from '../types';
 import { ValidationReport } from '../components/ValidationReport';
 
@@ -33,9 +34,9 @@ const CATEGORIES = [
   'Other',
 ];
 
-
 export const CreateModulePage: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const { validateModuleZip, validateGithubRepo, createModule } = useModuleStore();
 
   const [activeTab, setActiveTab] = useState<'upload' | 'github'>('upload');
@@ -55,7 +56,7 @@ export const CreateModulePage: React.FC = () => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('CRM');
-  const [author, setAuthor] = useState('Developer');
+  const [author, setAuthor] = useState(user?.name || user?.username || 'Developer');
   const [version, setVersion] = useState('1.0.0');
   const [selectedTechnologies, setSelectedTechnologies] = useState<string[]>(['React']);
   const [customTech, setCustomTech] = useState('');
@@ -204,7 +205,8 @@ export const CreateModulePage: React.FC = () => {
       name: name.trim(),
       description: description.trim(),
       category,
-      author: author.trim() || 'Developer',
+      author: author.trim() || user?.name || user?.username || 'Developer',
+      authorId: user?.id,
       version: version.trim() || '1.0.0',
       technologies: selectedTechnologies,
       sourceType: activeTab,

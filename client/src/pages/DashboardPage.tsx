@@ -35,6 +35,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenCreateProjec
   const recentProjects = projects.slice(0, 4);
   const recentModules = modules.slice(0, 3);
 
+  const myPublishedModules = modules.filter(
+    (m) =>
+      (m.authorId && user?.id && m.authorId === user.id) ||
+      (m.author && user?.username && m.author.toLowerCase() === user.username.toLowerCase()) ||
+      (m.author && user?.name && m.author.toLowerCase() === user.name.toLowerCase()) ||
+      (m.author && user?.email && m.author.toLowerCase() === user.email.toLowerCase())
+  );
+
   return (
     <div className="space-y-8 p-8 max-w-7xl mx-auto">
       {/* Welcome Banner */}
@@ -75,9 +83,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenCreateProjec
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'My Projects', count: projects.length, icon: FolderGit2 },
-          { label: 'Published Modules', count: modules.filter((m) => m.author === user?.name || m.sourceType === 'upload').length, icon: Boxes },
+          { label: 'Published Modules', count: myPublishedModules.length, icon: Boxes },
           { label: 'Available Modules', count: modules.length, icon: Layers },
-          { label: 'Total Downloads', count: modules.reduce((acc, m) => acc + (m.downloads || 0), 0), icon: Download },
+          { label: 'Total Downloads', count: myPublishedModules.reduce((acc, m) => acc + (m.downloads || 0), 0), icon: Download },
         ].map((card, i) => {
           const Icon = card.icon;
           return (

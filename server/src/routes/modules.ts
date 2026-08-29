@@ -56,13 +56,21 @@ function formatModuleOutput(mod: any) {
 // GET /api/modules - Browse / Search / Filter / Sort
 modulesRouter.get('/', async (req, res) => {
   try {
-    const { category, search, sort = 'popular' } = req.query as {
+    const { category, search, sort = 'popular', authorId, author } = req.query as {
       category?: string;
       search?: string;
       sort?: string;
+      authorId?: string;
+      author?: string;
     };
 
     const where: any = { isPublished: true };
+
+    if (authorId) {
+      where.authorId = authorId;
+    } else if (author) {
+      where.author = author;
+    }
 
     if (category && category !== 'All') {
       where.categoryName = category;
@@ -294,6 +302,7 @@ modulesRouter.post('/', async (req, res) => {
       description,
       category,
       author,
+      authorId: bodyAuthorId,
       version = '1.0.0',
       technologies = [],
       sourceType = 'upload',
@@ -312,6 +321,8 @@ modulesRouter.post('/', async (req, res) => {
       envVars = [],
       deployedUrl,
     } = req.body;
+
+    const authorId = bodyAuthorId || (req.headers['x-user-id'] as string | undefined);
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Module name is required' });
@@ -356,6 +367,7 @@ modulesRouter.post('/', async (req, res) => {
       name: name.trim(),
       description: description.trim(),
       author: authorName,
+      authorId: authorId || null,
       categoryName,
       version: version || '1.0.0',
       technologies: technologiesJson,

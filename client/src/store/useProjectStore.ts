@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { Project, ProjectModule, Module } from '../types';
 
+import { useAuthStore } from './useAuthStore';
+
 interface ProjectState {
   projects: Project[];
   currentProject: Project | null;
@@ -68,7 +70,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   fetchProjects: async () => {
     set({ isLoading: true, error: null });
     try {
-      const res = await fetch(`${API_BASE}/projects`);
+      const user = useAuthStore.getState().user;
+      const query = user?.id ? `?userId=${encodeURIComponent(user.id)}` : '';
+      const res = await fetch(`${API_BASE}/projects${query}`);
       if (!res.ok) throw new Error('Failed to load projects');
       const projects = await res.json();
       set({ projects, isLoading: false });
@@ -79,13 +83,17 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   createProject: async (name: string, options?: any) => {
     try {
+      const user = useAuthStore.getState().user;
       const payload = typeof options === 'string'
-        ? { name, description: options }
-        : { name, ...options };
+        ? { name, description: options, userId: user?.id, userEmail: user?.email, userName: user?.name }
+        : { name, ...options, userId: user?.id, userEmail: user?.email, userName: user?.name };
 
       const res = await fetch(`${API_BASE}/projects`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(user?.id ? { 'x-user-id': user.id } : {}),
+        },
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('Failed to create project');
