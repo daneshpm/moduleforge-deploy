@@ -43,17 +43,31 @@ export const MeetingRoomModal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'chat' | 'participants' | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(mediaService.getLocalStream());
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
+  // Subscribe to media device changes & auto-acquire camera if needed
   useEffect(() => {
-    if (currentMeeting && !isMeetingVideoOff && localVideoRef.current) {
-      const stream = mediaService.getLocalStream();
-      if (stream) {
-        localVideoRef.current.srcObject = stream;
-      }
+    const unsub = mediaService.subscribe(() => {
+      setLocalStream(mediaService.getLocalStream());
+    });
+
+    if (currentMeeting && !mediaService.getLocalStream()) {
+      mediaService.getLocalMedia({ video: !isMeetingVideoOff, audio: !isMeetingMuted }).then((stream) => {
+        setLocalStream(stream);
+      });
     }
-  }, [currentMeeting, isMeetingVideoOff]);
+
+    return () => unsub();
+  }, [currentMeeting, isMeetingVideoOff, isMeetingMuted]);
+
+  useEffect(() => {
+    if (localVideoRef.current && localStream && !isMeetingVideoOff) {
+      localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(() => {});
+    }
+  }, [localStream, isMeetingVideoOff]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });

@@ -56,6 +56,7 @@ export const App: React.FC = () => {
   const { updatePresence, pollActiveCalls } = useCommunicationStore();
 
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
 
@@ -180,9 +181,12 @@ export const App: React.FC = () => {
   return (
     <RequireAuth>
       <div className="flex min-h-screen bg-[#F7F8F7] text-[#202524]">
-        <Sidebar />
+        <Sidebar isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
         <div className="flex-1 flex flex-col min-w-0">
-          <Navbar onOpenCreateProject={() => setIsProjectModalOpen(true)} />
+          <Navbar
+            onOpenCreateProject={() => setIsProjectModalOpen(true)}
+            onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+          />
           <main className="flex-1 overflow-y-auto pb-16">
             <Routes>
               <Route

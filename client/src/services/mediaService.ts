@@ -59,42 +59,95 @@ class MediaService {
   }
 
   /**
-   * Request local camera and microphone permissions safely with rich error descriptions
+   * Request local camera and microphone permissions safely with multi-tiered fallback
    */
   public async getLocalMedia(options: { video?: boolean; audio?: boolean } = { video: true, audio: true }): Promise<MediaStream | null> {
-    try {
-      this.notify({ error: null });
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: options.audio ? { echoCancellation: true, noiseSuppression: true } : false,
-        video: options.video ? { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { max: 30 } } : false,
-      });
+    this.notify({ error: null });
 
-      this.localMediaStream = stream;
-      this.notify({
-        hasAudio: stream.getAudioTracks().length > 0,
-        hasVideo: stream.getVideoTracks().length > 0,
-        isAudioMuted: !stream.getAudioTracks().some((t) => t.enabled),
-        isVideoMuted: !stream.getVideoTracks().some((t) => t.enabled),
-      });
-
-      return stream;
-    } catch (err: any) {
-      console.warn('getUserMedia error:', err);
-      let errorMsg = 'Could not access camera or microphone.';
-
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        errorMsg = 'Permission denied: Please allow camera and microphone access in your browser settings.';
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        errorMsg = 'No microphone or camera device was found on this computer.';
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-        errorMsg = 'Your camera or microphone is currently being used by another application.';
-      } else if (err.name === 'OverconstrainedError') {
-        errorMsg = 'Camera resolution or settings are not supported by your hardware.';
-      }
-
-      this.notify({ error: errorMsg });
+    // Check if browser mediaDevices API is supported
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      this.notify({ error: 'Media devices are not supported on this browser or insecure HTTP connection.' });
       return null;
     }
+
+    // Tier 1: Try combined HD audio & video
+    if (options.video !== false && options.audio !== false) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
+        });
+        this.localMediaStream = stream;
+        this.notify({
+          hasAudio: stream.getAudioTracks().length > 0,
+          hasVideo: stream.getVideoTracks().length > 0,
+          isAudioMuted: !stream.getAudioTracks().some((t) => t.enabled),
+          isVideoMuted: !stream.getVideoTracks().some((t) => t.enabled),
+        });
+        return stream;
+      } catch (err: any) {
+        console.warn('Tier 1 HD getUserMedia failed, trying Tier 2 standard...', err);
+      }
+    }
+
+    // Tier 2: Try standard combined audio & video with loose constraints
+    if (options.video !== false && options.audio !== false) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        this.localMediaStream = stream;
+        this.notify({
+          hasAudio: stream.getAudioTracks().length > 0,
+          hasVideo: stream.getVideoTracks().length > 0,
+          isAudioMuted: !stream.getAudioTracks().some((t) => t.enabled),
+          isVideoMuted: !stream.getVideoTracks().some((t) => t.enabled),
+        });
+        return stream;
+      } catch (err: any) {
+        console.warn('Tier 2 standard getUserMedia failed, attempting split audio/video fallback...', err);
+      }
+    }
+
+    // Tier 3: Attempt split acquisition (audio-only or video-only)
+    let audioTrack: MediaStreamTrack | null = null;
+    let videoTrack: MediaStreamTrack | null = null;
+
+    if (options.audio !== false) {
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioTrack = audioStream.getAudioTracks()[0] || null;
+      } catch (e: any) {
+        console.warn('Microphone stream acquisition unavailable:', e.message);
+      }
+    }
+
+    if (options.video !== false) {
+      try {
+        const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        videoTrack = videoStream.getVideoTracks()[0] || null;
+      } catch (e: any) {
+        console.warn('Camera stream acquisition unavailable:', e.message);
+      }
+    }
+
+    if (audioTrack || videoTrack) {
+      const combined = new MediaStream();
+      if (audioTrack) combined.addTrack(audioTrack);
+      if (videoTrack) combined.addTrack(videoTrack);
+
+      this.localMediaStream = combined;
+      this.notify({
+        hasAudio: Boolean(audioTrack),
+        hasVideo: Boolean(videoTrack),
+        isAudioMuted: audioTrack ? !audioTrack.enabled : true,
+        isVideoMuted: videoTrack ? !videoTrack.enabled : true,
+      });
+      return combined;
+    }
+
+    this.notify({
+      error: 'Could not access camera or microphone. Please ensure permissions are granted in your browser settings.',
+    });
+    return null;
   }
 
   /**
@@ -111,7 +164,10 @@ class MediaService {
     onParticipantDisconnected?: (participant: RemoteParticipant) => void;
   }): Promise<Room | null> {
     try {
-      this.cleanup();
+      if (this.currentRoom) {
+        try { this.currentRoom.disconnect(); } catch (_) {}
+        this.currentRoom = null;
+      }
 
       const room = new Room({
         adaptiveStream: true,
@@ -165,7 +221,7 @@ class MediaService {
             echoCancellation: true,
             noiseSuppression: true,
           });
-          await room.localParticipant.publishTrack(this.localAudioAudioTrack(this.localAudioTrack));
+          await room.localParticipant.publishTrack(this.localAudioTrack);
           this.notify({ isAudioMuted: false });
         } catch (e) {
           console.warn('Could not publish audio track:', e);
@@ -186,14 +242,10 @@ class MediaService {
 
       return room;
     } catch (err: any) {
-      console.error('Failed to join LiveKit room:', err);
-      this.notify({ error: `Connection failed: ${err.message || 'Could not connect to room'}` });
+      console.warn('SFU connection unavailable (operating in standalone WebRTC mode):', err.message);
+      // Keep local media stream active for standalone preview/WebRTC
       return null;
     }
-  }
-
-  private localAudioAudioTrack(track: LocalAudioTrack) {
-    return track;
   }
 
   /**
