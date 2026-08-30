@@ -19,6 +19,7 @@ interface ProjectState {
       description?: string;
       projectType?: 'individual' | 'team';
       visibility?: 'private' | 'public';
+      teamId?: string;
       gitRepositoryUrl?: string;
       gitBranch?: string;
       teamRepos?: Array<{ name: string; category?: string; githubRepository: string; branch?: string }>;
@@ -48,6 +49,8 @@ interface ProjectState {
   rollbackProjectModule: (projectId: string, pmId: string, previousCommitSha: string) => Promise<{ success: boolean; projectModule?: any; deploymentUrl?: string; error?: string }>;
   fetchModuleLogs: (projectId: string, pmId: string) => Promise<any[]>;
   fetchProjectActivities: (projectId: string) => Promise<any[]>;
+  fetchProjectMembers: (projectId: string) => Promise<any[]>;
+  fetchProjectRunnerStatus: (projectId?: string) => Promise<any[]>;
   startLocalModule: (projectId: string, pmId: string) => Promise<{ success: boolean; state?: any; error?: string }>;
   stopLocalModule: (pmId: string) => Promise<{ success: boolean; state?: any; error?: string }>;
   startLocalProject: (projectId: string) => Promise<{ success: boolean; states?: any[]; error?: string }>;
@@ -558,6 +561,27 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const res = await fetch(`${API_BASE}/projects/${projectId}/activity`);
       if (!res.ok) return [];
       return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  fetchProjectMembers: async (projectId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/projects/${projectId}/members`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  fetchProjectRunnerStatus: async (_projectId?: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/runner/status`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.processes || [];
     } catch (e) {
       return [];
     }

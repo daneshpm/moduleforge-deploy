@@ -31,6 +31,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useModuleStore } from '../store/useModuleStore';
 import { useCommunicationStore } from '../store/useCommunicationStore';
 import { ExportProjectModal } from '../components/ExportProjectModal';
+import { ProjectModule, ModuleDeployment } from '../types';
 
 export const VisualBuilderPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -490,7 +491,7 @@ export const VisualBuilderPage: React.FC = () => {
                         {selectedProjectModule.module?.deployedUrl || modules.find((m) => m.id === selectedProjectModule.moduleId)?.deployedUrl}
                       </p>
                       <a
-                        href={selectedProjectModule.module?.deployedUrl || modules.find((m) => m.id === selectedProjectModule.moduleId)?.deployedUrl}
+                        href={(selectedProjectModule.module?.deployedUrl || modules.find((m) => m.id === selectedProjectModule.moduleId)?.deployedUrl) || undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="w-full py-1.5 rounded-lg bg-[#1F5E4B] hover:bg-[#174739] text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-xs"

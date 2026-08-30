@@ -180,8 +180,8 @@ class MediaService {
       this.currentRoom = room;
 
       // Event handlers
-      room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
-        const ids = speakers.map((s) => s.identity);
+      room.on(RoomEvent.ActiveSpeakersChanged, (speakers: any[]) => {
+        const ids = (speakers || []).map((s: any) => s?.identity).filter(Boolean);
         this.notify({ activeSpeakerIds: ids });
       });
 
@@ -195,19 +195,19 @@ class MediaService {
         }
       });
 
-      room.on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
+      room.on(RoomEvent.TrackSubscribed, (track: any, pub: any, participant: any) => {
         params.onTrackSubscribed?.(track, pub, participant);
       });
 
-      room.on(RoomEvent.TrackUnsubscribed, (track, pub, participant) => {
+      room.on(RoomEvent.TrackUnsubscribed, (track: any, pub: any, participant: any) => {
         params.onTrackUnsubscribed?.(track, pub, participant);
       });
 
-      room.on(RoomEvent.ParticipantConnected, (participant) => {
+      room.on(RoomEvent.ParticipantConnected, (participant: any) => {
         params.onParticipantConnected?.(participant);
       });
 
-      room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+      room.on(RoomEvent.ParticipantDisconnected, (participant: any) => {
         params.onParticipantDisconnected?.(participant);
       });
 

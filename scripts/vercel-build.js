@@ -19,16 +19,20 @@ function run(label, cmd, args, cwd) {
 }
 
 // Step 1 — generate Prisma client
-run(
-  'prisma generate',
-  node,
-  [
-    path.join(root, 'node_modules', 'prisma', 'build', 'index.js'),
-    'generate',
-    '--schema', path.join(root, 'server', 'prisma', 'schema.prisma'),
-  ],
-  root
-);
+try {
+  run(
+    'prisma generate',
+    node,
+    [
+      path.join(root, 'node_modules', 'prisma', 'build', 'index.js'),
+      'generate',
+      '--schema', path.join(root, 'server', 'prisma', 'schema.prisma'),
+    ],
+    root
+  );
+} catch (e) {
+  console.warn('prisma generate warning (proceeding if already generated):', e.message);
+}
 
 // Step 2 — push schema to database (creates all tables if they don't exist)
 if (process.env.DATABASE_URL) {

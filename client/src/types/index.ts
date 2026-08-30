@@ -220,6 +220,7 @@ export interface Project {
   name: string;
   description?: string;
   userId?: string;
+  user?: User;
   teamId?: string;
   team?: Team;
   projectType: 'individual' | 'team';

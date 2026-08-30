@@ -78,15 +78,18 @@ export const CommunicationPage: React.FC = () => {
 
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [selectedAttachments, setSelectedAttachments] = useState<any[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const prevMsgCountRef = useRef(0);
+  const prevMsgCountRef = useRef<number>(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTo({
-        top: chatContainerRef.current.scrollHeight,
+  const activeMessages = activeDirectChat ? directMessages : channelMessages;
+
+  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({
         behavior,
+        block: 'end',
       });
     }
   };
@@ -245,8 +248,6 @@ export const CommunicationPage: React.FC = () => {
     const name = c.otherParticipant?.name || c.otherParticipant?.username || '';
     return name.toLowerCase().includes(searchQuery.toLowerCase());
   });
-
-  const activeMessages = activeDirectChat ? directMessages : channelMessages;
 
   return (
     <div className="h-[calc(100vh-4rem)] flex bg-[#F7F8F7] text-[#202524] overflow-hidden">
