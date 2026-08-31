@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
 import { createLiveKitToken, DEFAULT_ICE_SERVERS } from '../services/livekit';
+import { realtimeEventManager } from '../services/realtimeEvents';
 
 export const callsRouter = Router();
 
@@ -43,6 +44,11 @@ callsRouter.post('/initiate', async (req, res) => {
       participantName: call.caller.name || call.caller.username,
       metadata: { callId: call.id, role: 'caller', type },
     });
+
+    // Realtime notify receiver of incoming call
+    try {
+      realtimeEventManager.sendToUser(receiverId, 'incoming_call', { call });
+    } catch (_) {}
 
     res.status(201).json({
       call,
@@ -88,6 +94,41 @@ callsRouter.get('/active', async (req, res) => {
   } catch (error: any) {
     console.error('Error checking active calls:', error);
     res.status(500).json({ error: error.message || 'Failed to check active calls' });
+  }
+});
+
+// GET /api/calls/history - Get call logs for a user (Must be before /:callId)
+callsRouter.get('/history', async (req, res) => {
+  try {
+    const { userId, limit = 30 } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    const history = await (prisma as any).callSession.findMany({
+      where: {
+        OR: [
+          { callerId: String(userId) },
+          { receiverId: String(userId) },
+        ],
+      },
+      take: Number(limit),
+      orderBy: { createdAt: 'desc' },
+      include: {
+        caller: {
+          select: { id: true, name: true, username: true, avatarUrl: true },
+        },
+        receiver: {
+          select: { id: true, name: true, username: true, avatarUrl: true },
+        },
+      },
+    });
+
+    res.json({ history });
+  } catch (error: any) {
+    console.error('Error fetching call history:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch history' });
   }
 });
 
@@ -198,44 +239,19 @@ callsRouter.patch('/:callId/status', async (req, res) => {
       },
     });
 
+    // Realtime broadcast call status to both participants
+    try {
+      if (updatedCall.callerId) {
+        realtimeEventManager.sendToUser(updatedCall.callerId, 'call_status_updated', { call: updatedCall });
+      }
+      if (updatedCall.receiverId) {
+        realtimeEventManager.sendToUser(updatedCall.receiverId, 'call_status_updated', { call: updatedCall });
+      }
+    } catch (_) {}
+
     res.json({ call: updatedCall });
   } catch (error: any) {
     console.error('Error updating call status:', error);
     res.status(500).json({ error: error.message || 'Failed to update call status' });
-  }
-});
-
-// GET /api/calls/history - Get call logs for a user
-callsRouter.get('/history', async (req, res) => {
-  try {
-    const { userId, limit = 30 } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
-    }
-
-    const history = await (prisma as any).callSession.findMany({
-      where: {
-        OR: [
-          { callerId: String(userId) },
-          { receiverId: String(userId) },
-        ],
-      },
-      take: Number(limit),
-      orderBy: { createdAt: 'desc' },
-      include: {
-        caller: {
-          select: { id: true, name: true, username: true, avatarUrl: true },
-        },
-        receiver: {
-          select: { id: true, name: true, username: true, avatarUrl: true },
-        },
-      },
-    });
-
-    res.json({ history });
-  } catch (error: any) {
-    console.error('Error fetching call history:', error);
-    res.status(500).json({ error: error.message || 'Failed to fetch history' });
   }
 });

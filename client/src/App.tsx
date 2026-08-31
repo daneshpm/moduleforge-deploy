@@ -103,10 +103,16 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (user?.id) {
       updatePresence('online', undefined, 'idle');
+      pollActiveCalls(); // Immediate check on mount/login
 
-      const heartbeat = setInterval(() => {
-        updatePresence('online', undefined, 'idle');
+      // Active incoming call poller (2.5s for instant ringing feedback)
+      const callPoller = setInterval(() => {
         pollActiveCalls();
+      }, 2500);
+
+      // Presence heartbeat (30s)
+      const presenceHeartbeat = setInterval(() => {
+        updatePresence('online', undefined, 'idle');
       }, 30000);
 
       const handleBeforeUnload = () => {
@@ -115,7 +121,8 @@ export const App: React.FC = () => {
       window.addEventListener('beforeunload', handleBeforeUnload);
 
       return () => {
-        clearInterval(heartbeat);
+        clearInterval(callPoller);
+        clearInterval(presenceHeartbeat);
         window.removeEventListener('beforeunload', handleBeforeUnload);
       };
     }
