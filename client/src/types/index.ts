@@ -215,6 +215,34 @@ export interface FileTreeItem {
   children?: FileTreeItem[];
 }
 
+export interface ProjectRepository {
+  id?: string;
+  projectId?: string;
+  provider: string;
+  externalId?: string | null;
+  owner: string;
+  name: string;
+  url: string;
+  defaultBranch: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ModuleForgeManifestModule {
+  id: string;
+  name: string;
+  version: string;
+  path: string;
+}
+
+export interface ModuleForgeManifest {
+  name: string;
+  version: string;
+  description?: string;
+  managedBy: string;
+  modules: ModuleForgeManifestModule[];
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -239,6 +267,7 @@ export interface Project {
   modules: ProjectModule[];
   members?: ProjectMember[];
   activities?: ProjectActivity[];
+  repository?: ProjectRepository | null;
 }
 
 export interface User {
@@ -320,7 +349,7 @@ export interface TeamInvitation {
 export interface Notification {
   id: string;
   userId: string;
-  type: 'team_invitation' | 'invitation_accepted' | 'invitation_declined' | 'member_removed' | 'system';
+  type: 'team_invitation' | 'invitation_accepted' | 'invitation_declined' | 'member_removed' | 'team_meeting' | 'system';
   title: string;
   message: string;
   relatedTeamId?: string;

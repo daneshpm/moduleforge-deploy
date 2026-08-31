@@ -616,7 +616,7 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
     set({ meetingError: null });
 
     try {
-      await mediaService.getLocalMedia({ video: true, audio: true });
+      await mediaService.getLocalMedia({ video: true, audio: true }).catch(() => {});
 
       const res = await fetch(`${API_BASE}/meetings`, {
         method: 'POST',
@@ -627,6 +627,7 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
           teamId: options.teamId,
           projectId: options.projectId,
           channelId: options.channelId,
+          appUrl: window.location.origin,
         }),
       });
 
@@ -674,7 +675,7 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
     set({ meetingError: null });
 
     try {
-      await mediaService.getLocalMedia({ video: true, audio: true });
+      await mediaService.getLocalMedia({ video: true, audio: true }).catch(() => {});
 
       const res = await fetch(`${API_BASE}/meetings/${meetingId}/join`, {
         method: 'POST',

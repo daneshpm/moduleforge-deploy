@@ -22,6 +22,7 @@ import { IncomingCallModal } from './components/communication/IncomingCallModal'
 import { ActiveCallModal } from './components/communication/ActiveCallModal';
 import { MeetingRoomModal } from './components/communication/MeetingRoomModal';
 import { UsernameSetupModal } from './components/UsernameSetupModal';
+import { CreateProjectModal } from './components/CreateProjectModal';
 import { useAuthStore } from './store/useAuthStore';
 import { useProjectStore } from './store/useProjectStore';
 import { useCommunicationStore } from './store/useCommunicationStore';
@@ -58,8 +59,41 @@ export const App: React.FC = () => {
 
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
-  const [newProjectDesc, setNewProjectDesc] = useState('');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('moduleforge_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('moduleforge_sidebar_collapsed', String(next));
+      } catch (e) {
+        console.warn('Could not save sidebar preference', e);
+      }
+      return next;
+    });
+  };
+
+  // Keyboard shortcut Ctrl+B / Cmd+B to toggle sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+          return;
+        }
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     checkAuth();
@@ -99,18 +133,6 @@ export const App: React.FC = () => {
     location.pathname === '/join-team' ||
     location.pathname.startsWith('/invites/') ||
     location.pathname.startsWith('/invite/');
-
-  const handleQuickCreateProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newProjectName.trim()) return;
-    const project = await createProject(newProjectName, newProjectDesc);
-    setIsProjectModalOpen(false);
-    setNewProjectName('');
-    setNewProjectDesc('');
-    if (project) {
-      navigate(`/builder/${project.id}`);
-    }
-  };
 
   // ── Dedicated meeting room join preview — protected, full screen ──────────
   if (isMeetRoute) {
@@ -182,11 +204,17 @@ export const App: React.FC = () => {
   return (
     <RequireAuth>
       <div className="flex min-h-screen bg-[#F7F8F7] text-[#202524]">
-        <Sidebar isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
-        <div className="flex-1 flex flex-col min-w-0">
+        <Sidebar
+          isOpen={isMobileMenuOpen}
+          onClose={() => setIsMobileMenuOpen(false)}
+          isCollapsed={isSidebarCollapsed}
+        />
+        <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
           <Navbar
             onOpenCreateProject={() => setIsProjectModalOpen(true)}
             onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+            isSidebarCollapsed={isSidebarCollapsed}
+            onToggleSidebar={toggleSidebar}
           />
           <main className="flex-1 overflow-y-auto pb-16">
             <Routes>
@@ -220,78 +248,11 @@ export const App: React.FC = () => {
         {/* Global Username Setup Modal for First-time Google Login */}
         <UsernameSetupModal />
 
-        {/* Quick Create Project Modal */}
-        <AnimatePresence>
-          {isProjectModalOpen && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-[#202524]/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] select-none"
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 15 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 15 }}
-                transition={{ type: 'spring', damping: 25, stiffness: 320 }}
-                className="bg-white border border-[#E2E6E4] rounded-3xl p-6 w-full max-w-md space-y-5 shadow-2xl overflow-y-auto max-h-[90vh]"
-              >
-                <div className="flex items-center justify-between border-b border-[#E2E6E4] pb-3">
-                  <h2 className="text-lg font-bold text-[#202524] flex items-center gap-2">
-                    <FolderGit2 className="w-5 h-5 text-[#1F5E4B]" />
-                    <span>Create New Project</span>
-                  </h2>
-                  <button
-                    onClick={() => setIsProjectModalOpen(false)}
-                    className="p-1.5 rounded-xl text-[#6B7471] hover:text-[#202524] hover:bg-[#F7F8F7] transition border border-transparent hover:border-[#E2E6E4]"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleQuickCreateProject} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#202524]">Project Name</label>
-                    <input
-                      type="text"
-                      value={newProjectName}
-                      onChange={(e) => setNewProjectName(e.target.value)}
-                      placeholder="e.g. Sales & ERP Workspace"
-                      className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl px-3.5 py-2.5 text-xs text-[#202524] placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B] focus:ring-2 focus:ring-[#1F5E4B]/15"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#202524]">Description</label>
-                    <textarea
-                      value={newProjectDesc}
-                      onChange={(e) => setNewProjectDesc(e.target.value)}
-                      placeholder="Composition combining CRM, Books and Inventory..."
-                      className="w-full bg-[#F7F8F7] border border-[#E2E6E4] rounded-xl px-3.5 py-2.5 text-xs text-[#202524] placeholder-[#6B7471] focus:outline-none focus:border-[#1F5E4B] focus:ring-2 focus:ring-[#1F5E4B]/15 h-24 resize-none"
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsProjectModalOpen(false)}
-                      className="px-4 py-2 rounded-xl bg-[#F7F8F7] hover:bg-[#EAF3EF] text-[#6B7471] hover:text-[#202524] border border-[#E2E6E4] text-xs font-semibold transition"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] text-white text-xs font-bold shadow-md shadow-[#1F5E4B]/20 transition"
-                    >
-                      Create & Open Builder
-                    </button>
-                  </div>
-                </form>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Create Project Modal with Repository Choices & Step Progress */}
+        <CreateProjectModal
+          isOpen={isProjectModalOpen}
+          onClose={() => setIsProjectModalOpen(false)}
+        />
       </div>
     </RequireAuth>
   );

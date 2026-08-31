@@ -32,6 +32,14 @@ notificationsRouter.get('/', async (req, res) => {
             expiresAt: true,
           },
         },
+        relatedMeeting: {
+          select: {
+            id: true,
+            roomId: true,
+            title: true,
+            status: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: 50,

@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyCznVOpLVoS_f_byFrGEUSkyqEZichBoJU',
@@ -10,16 +11,18 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:548620534200:web:30240fb4d8e0894dd98f4d',
 };
 
-// Initialise Firebase Auth with project config
+// Initialise Firebase Auth & Firestore with project config
 const isConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 
-const app = isConfigured
+export const firebaseApp = isConfigured
   ? getApps().length > 0
     ? getApps()[0]
     : initializeApp(firebaseConfig)
   : null;
 
-export const firebaseAuth = app ? getAuth(app) : null;
+export const firebaseAuth = firebaseApp ? getAuth(firebaseApp) : null;
+export const firestore = firebaseApp ? getFirestore(firebaseApp) : null;
 export const googleProvider = new GoogleAuthProvider();
 
 export { isConfigured as isFirebaseConfigured };
+

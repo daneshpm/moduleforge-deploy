@@ -20,6 +20,7 @@
     "jsonwebtoken": "^9.0.3",
     "jszip": "^3.10.1",
     "livekit-server-sdk": "^2.18.0",
+    "moduleforge": "file:..",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^9.0.5"
   },

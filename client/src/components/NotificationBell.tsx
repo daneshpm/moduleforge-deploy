@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bell, Check, X, Users, Sparkles, CheckCheck, Loader2, ArrowRight } from 'lucide-react';
+import { Bell, Check, X, Users, Sparkles, CheckCheck, Loader2, ArrowRight, Video } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+
 import { useNotificationStore } from '../store/useNotificationStore';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -145,7 +146,9 @@ export const NotificationBell: React.FC = () => {
                     <div className="flex items-start gap-3">
                       {/* Avatar / Icon */}
                       <div className="w-8 h-8 rounded-xl bg-[#EAF3EF] border border-[#1F5E4B]/20 text-[#1F5E4B] flex items-center justify-center shrink-0">
-                        {notif.type === 'team_invitation' ? (
+                        {notif.type === 'team_meeting' ? (
+                          <Video className="w-4 h-4 text-[#1F5E4B]" />
+                        ) : notif.type === 'team_invitation' ? (
                           <Users className="w-4 h-4" />
                         ) : notif.type === 'invitation_accepted' ? (
                           <Check className="w-4 h-4 text-[#2E7D5B]" />
@@ -167,6 +170,33 @@ export const NotificationBell: React.FC = () => {
                         </p>
                       </div>
                     </div>
+
+                    {/* Action button for Team Video Meeting notifications */}
+                    {notif.type === 'team_meeting' && (
+                      <div className="pl-11 pt-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPanelOpen(false);
+                            const meetingId =
+                              (notif as any).relatedMeetingId ||
+                              (notif as any).relatedMeeting?.roomId ||
+                              (notif as any).relatedMeeting?.id ||
+                              (notif as any).relatedInvitationId;
+                            if (meetingId) {
+                              navigate(`/meet/${meetingId}`);
+                            } else if (notif.relatedTeamId) {
+                              navigate(`/teams/${notif.relatedTeamId}`);
+                            }
+                          }}
+                          className="px-3.5 py-1.5 rounded-xl bg-[#1F5E4B] hover:bg-[#174739] text-white text-[11px] font-bold shadow-xs flex items-center gap-1.5 transition transform active:scale-95 cursor-pointer"
+                        >
+                          <Video className="w-3.5 h-3.5" />
+                          <span>Join Meeting</span>
+                          <ArrowRight className="w-3 h-3 ml-0.5" />
+                        </button>
+                      </div>
+                    )}
 
                     {/* Action buttons for pending team invitations */}
                     {isInvitation && (
@@ -217,6 +247,7 @@ export const NotificationBell: React.FC = () => {
                         </button>
                       </div>
                     )}
+
                   </div>
                 );
               })

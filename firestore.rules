@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isTeamMember(teamId) {
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/teams/$(teamId)) &&
+        (
+          get(/databases/$(database)/documents/teams/$(teamId)).data.ownerId == request.auth.uid ||
+          get(/databases/$(database)/documents/teams/$(teamId)).data.members[request.auth.uid] != null
+        )
+      );
+    }
+
+    function isMeetingMember(meetingId) {
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/meetings/$(meetingId)) &&
+        (
+          get(/databases/$(database)/documents/meetings/$(meetingId)).data.createdBy == request.auth.uid ||
+          get(/databases/$(database)/documents/meetings/$(meetingId)).data.participants[request.auth.uid] != null ||
+          isTeamMember(get(/databases/$(database)/documents/meetings/$(meetingId)).data.teamId)
+        )
+      );
+    }
+
+    // Teams Collection
+    match /teams/{teamId} {
+      allow read: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid ||
+        resource.data.members[request.auth.uid] != null ||
+        request.auth.token.email != null
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid ||
+        resource.data.members[request.auth.uid].role in ['owner', 'admin']
+      );
+
+      match /members/{memberId} {
+        allow read, write: if isAuthenticated() && isTeamMember(teamId);
+      }
+    }
+
+    // Meetings Collection
+    match /meetings/{meetingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        resource.data.createdBy == request.auth.uid ||
+        resource.data.participants[request.auth.uid] != null ||
+        isTeamMember(resource.data.teamId)
+      );
+      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+
+      // Subcollection: Participants presence & state
+      match /participants/{participantId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated() && (
+          request.auth.uid == participantId ||
+          isMeetingMember(meetingId)
+        );
+      }
+
+      // Subcollection: WebRTC SDP Signals (offers / answers)
+      match /signals/{signalId} {
+        allow read, write: if isAuthenticated();
+      }
+
+      // Subcollection: WebRTC ICE Candidates
+      match /candidates/{candidateId} {
+        allow read, write: if isAuthenticated();
+      }
+
+      // Subcollection: In-Meeting Chat Messages
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated() && (
+          resource.data.senderId == request.auth.uid ||
+          isMeetingMember(meetingId)
+        );
+      }
+    }
+
+    // User Presences
+    match /presence/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}

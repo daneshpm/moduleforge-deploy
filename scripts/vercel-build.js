@@ -7,6 +7,7 @@
 
 const { execFileSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 const root = path.resolve(__dirname, '..');
 const node = process.execPath;
@@ -18,8 +19,25 @@ function run(label, cmd, args, cwd) {
   console.log(`✓ ${label} done`);
 }
 
+// Adjust schema provider based on DATABASE_URL
+const schemaPath = path.join(root, 'server', 'prisma', 'schema.prisma');
+if (fs.existsSync(schemaPath) && process.env.DATABASE_URL) {
+  try {
+    let schema = fs.readFileSync(schemaPath, 'utf8');
+    const isPostgres = process.env.DATABASE_URL.startsWith('postgres://') || process.env.DATABASE_URL.startsWith('postgresql://');
+    const isMysql = process.env.DATABASE_URL.startsWith('mysql://');
+    const targetProvider = isPostgres ? 'postgresql' : isMysql ? 'mysql' : 'sqlite';
+    schema = schema.replace(/provider\s*=\s*"(postgresql|sqlite|mysql)"/, `provider = "${targetProvider}"`);
+    fs.writeFileSync(schemaPath, schema, 'utf8');
+    console.log(`✓ Schema datasource provider configured as: ${targetProvider}`);
+  } catch (err) {
+    console.warn('Could not auto-configure schema provider:', err.message);
+  }
+}
+
 // Step 1 — generate Prisma client
 try {
+
   run(
     'prisma generate',
     node,

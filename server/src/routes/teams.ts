@@ -88,6 +88,7 @@ teamsRouter.post('/', async (req, res) => {
       return res.status(404).json({ error: 'Owner user account not found. Please sign in again.' });
     }
 
+
     const team = await (prisma as any).team.create({
       data: {
         name: name.trim(),
@@ -673,11 +674,9 @@ teamsRouter.post('/:teamId/invitations/email', async (req, res) => {
     }
 
     // Deliver email invitation
-    const rawOrigin = req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : undefined);
-    let appUrl = (process.env.APP_URL || rawOrigin || 'https://moduleforge-deploy-pearl.vercel.app').replace(':5000', ':5173');
-    if (appUrl.includes('localhost') || appUrl.includes('127.0.0.1')) {
-      appUrl = 'https://moduleforge-deploy-pearl.vercel.app';
-    }
+    const rawOrigin = req.body.appUrl || req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : undefined);
+    const defaultBase = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://moduleforge-deploy-pearl.vercel.app' : 'http://localhost:5173');
+    const appUrl = (rawOrigin || defaultBase).replace(':5000', ':5173').replace(/\/+$/, '');
 
     const emailResult = await emailService.sendTeamInvitation({
       to: cleanEmail,

@@ -72,8 +72,12 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
             setEmailInviteResult(res.emailResult);
           } else if (res.invitation) {
             const baseUrl = window.location.origin;
+            const inviteLink = `${baseUrl}/invite/${res.invitation.token}`;
+            const subject = `You're invited to join "${targetTeamName}" on ModuleForge`;
+            const plainBody = `Hello,\n\nYou have been invited to join the team "${targetTeamName}" on ModuleForge.\n\nClick the link below to accept the invitation and join the team:\n${inviteLink}\n\nHappy building,\nModuleForge Team`;
             setEmailInviteResult({
-              inviteLink: `${baseUrl}/invite/${res.invitation.token}`,
+              inviteLink,
+              gmailComposeUrl: `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(cleanInput)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(plainBody)}`,
             });
           }
           setInputVal('');
@@ -86,8 +90,12 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
           setSuccessMessage(`Invitation sent to @${cleanInput.replace(/^@/, '')}!`);
           if (res.invitation) {
             const baseUrl = window.location.origin;
+            const inviteLink = `${baseUrl}/invite/${res.invitation.token}`;
+            const subject = `You're invited to join "${targetTeamName}" on ModuleForge`;
+            const plainBody = `Hello,\n\nYou have been invited to join the team "${targetTeamName}" on ModuleForge.\n\nClick the link below to accept the invitation and join the team:\n${inviteLink}\n\nHappy building,\nModuleForge Team`;
             setEmailInviteResult({
-              inviteLink: `${baseUrl}/invite/${res.invitation.token}`,
+              inviteLink,
+              gmailComposeUrl: `https://mail.google.com/mail/?view=cm&fs=1&to=&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(plainBody)}`,
             });
           }
           setInputVal('');

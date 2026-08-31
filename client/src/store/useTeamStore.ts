@@ -191,6 +191,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
           email,
           role,
           inviterId: user.id,
+          appUrl: window.location.origin,
         }),
       });
 

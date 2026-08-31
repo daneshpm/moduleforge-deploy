@@ -13,8 +13,16 @@ invitationsRouter.get('/:token', async (req, res) => {
       return res.status(400).json({ error: 'Invitation token is required' });
     }
 
-    const invitation = await (prisma as any).teamInvitation.findUnique({
-      where: { token },
+    const cleanToken = token.trim();
+
+    // 1. Try Team Invitation by token OR by id
+    const invitation = await (prisma as any).teamInvitation.findFirst({
+      where: {
+        OR: [
+          { token: cleanToken },
+          { id: cleanToken },
+        ],
+      },
       include: {
         team: {
           include: {
@@ -34,8 +42,14 @@ invitationsRouter.get('/:token', async (req, res) => {
     });
 
     if (!invitation) {
-      const projectMember = await prisma.projectMember.findUnique({
-        where: { inviteToken: token },
+      // 2. Try Project Member Invitation by inviteToken OR by id
+      const projectMember = await prisma.projectMember.findFirst({
+        where: {
+          OR: [
+            { inviteToken: cleanToken },
+            { id: cleanToken },
+          ],
+        },
         include: {
           project: {
             include: {
@@ -59,6 +73,37 @@ invitationsRouter.get('/:token', async (req, res) => {
             modulesCount: projectMember.project.modules.length,
             inviteeEmail: projectMember.email,
             role: projectMember.role,
+          },
+        });
+      }
+
+      // 3. Try Project Join Code or Project ID
+      const project = await prisma.project.findFirst({
+        where: {
+          OR: [
+            { joinCode: cleanToken.toUpperCase() },
+            { id: cleanToken },
+          ],
+        },
+        include: {
+          user: { select: { id: true, name: true, username: true } },
+          modules: { include: { module: true } },
+        },
+      });
+
+      if (project) {
+        return res.json({
+          valid: true,
+          isProjectInvite: true,
+          projectInvite: {
+            id: '',
+            projectId: project.id,
+            projectName: project.name,
+            projectDescription: project.description,
+            ownerName: project.user?.name || 'Project Owner',
+            modulesCount: project.modules?.length || 0,
+            inviteeEmail: '',
+            role: 'developer',
           },
         });
       }
@@ -110,16 +155,32 @@ invitationsRouter.post('/:token/accept', async (req, res) => {
       return res.status(401).json({ error: 'You must be signed in to accept this invitation' });
     }
 
-    const user = await (prisma as any).user.findUnique({
+    const cleanToken = token.trim();
+
+    let user = await (prisma as any).user.findUnique({
       where: { id: userId },
     });
 
     if (!user) {
-      return res.status(404).json({ error: 'User account not found' });
+      const email = req.body.email || `${userId}@gmail.com`;
+      user = await (prisma as any).user.create({
+        data: {
+          id: userId,
+          name: req.body.userName || req.body.name || 'User',
+          username: req.body.username || `user_${userId.substring(0, 8)}`,
+          email,
+          avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${userId}`,
+        },
+      });
     }
 
-    const invitation = await (prisma as any).teamInvitation.findUnique({
-      where: { token },
+    const invitation = await (prisma as any).teamInvitation.findFirst({
+      where: {
+        OR: [
+          { token: cleanToken },
+          { id: cleanToken },
+        ],
+      },
       include: {
         team: true,
         inviter: true,
@@ -127,8 +188,13 @@ invitationsRouter.post('/:token/accept', async (req, res) => {
     });
 
     if (!invitation) {
-      const projectMember = await prisma.projectMember.findUnique({
-        where: { inviteToken: token },
+      const projectMember = await prisma.projectMember.findFirst({
+        where: {
+          OR: [
+            { inviteToken: cleanToken },
+            { id: cleanToken },
+          ],
+        },
         include: { project: true },
       });
 
@@ -162,22 +228,63 @@ invitationsRouter.post('/:token/accept', async (req, res) => {
         });
       }
 
+      // Check project join code
+      const project = await prisma.project.findFirst({
+        where: {
+          OR: [
+            { joinCode: cleanToken.toUpperCase() },
+            { id: cleanToken },
+          ],
+        },
+      });
+
+      if (project) {
+        await prisma.projectMember.upsert({
+          where: { id: `${project.id}-${user.id}` },
+          update: {
+            status: 'accepted',
+            userId: user.id,
+            role: 'developer',
+          },
+          create: {
+            id: `${project.id}-${user.id}`,
+            projectId: project.id,
+            userId: user.id,
+            email: user.email,
+            name: user.name || user.username,
+            role: 'developer',
+            status: 'accepted',
+            acceptedAt: new Date(),
+          },
+        });
+
+        return res.json({
+          success: true,
+          isProject: true,
+          projectId: project.id,
+          message: `Successfully joined project ${project.name}`,
+        });
+      }
+
       return res.status(404).json({ error: 'Invitation not found or has been revoked' });
     }
 
     if (invitation.status === 'accepted') {
-      return res.status(400).json({ error: 'This invitation has already been accepted', teamId: invitation.teamId });
+      return res.json({ success: true, message: 'This invitation has already been accepted', teamId: invitation.teamId });
     }
 
     if (new Date(invitation.expiresAt) < new Date() || invitation.status === 'expired') {
       return res.status(400).json({ error: 'This invitation has expired. Please ask the team administrator for a new invite.' });
     }
 
-    // Check email restriction if specific email was invited
-    if (invitation.inviteeEmail && user.email.toLowerCase() !== invitation.inviteeEmail.toLowerCase()) {
-      return res.status(403).json({
-        error: `This invitation was sent specifically to ${invitation.inviteeEmail}. You are currently signed in as ${user.email}.`,
-      });
+    // If invited by direct user ID, ensure the recipient matches
+    if (invitation.inviteeUserId && invitation.inviteeUserId !== user.id) {
+      const targetUser = await (prisma as any).user.findUnique({ where: { id: invitation.inviteeUserId } });
+      if (targetUser && targetUser.email !== user.email) {
+        return res.status(403).json({
+          error: `This invitation was addressed specifically to @${targetUser.username || targetUser.name}.`,
+        });
+      }
     }
 
     // Add user as team member (upsert to avoid duplicates)

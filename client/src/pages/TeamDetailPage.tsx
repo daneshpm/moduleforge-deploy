@@ -40,6 +40,8 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useCommunicationStore } from '../store/useCommunicationStore';
 import { InviteMemberModal } from '../components/InviteMemberModal';
 import { TeamIssuesTab } from '../components/teams/TeamIssuesTab';
+import { MeetingHistory } from '../components/team/MeetingHistory';
+import { MeetingInvite } from '../components/team/MeetingInvite';
 import { Channel, ChannelType } from '../types/communication';
 
 export const TeamDetailPage: React.FC = () => {
@@ -63,9 +65,11 @@ export const TeamDetailPage: React.FC = () => {
     startDirectChat,
   } = useCommunicationStore();
 
-  const [activeTab, setActiveTab] = useState<'chat' | 'issues' | 'members' | 'invitations' | 'projects' | 'settings'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'issues' | 'meetings' | 'members' | 'invitations' | 'projects' | 'settings'>('chat');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
+
 
   // Settings tab form state
   const [nameInput, setNameInput] = useState('');
@@ -199,7 +203,7 @@ export const TeamDetailPage: React.FC = () => {
 
     if (meeting && (channelId || selectedChannel?.id) && user) {
       const targetChanId = channelId || selectedChannel?.id;
-      const joinUrl = `https://moduleforge-deploy-pearl.vercel.app/meet/${meeting.roomId}`;
+      const joinUrl = `${window.location.origin}/meet/${meeting.roomId || meeting.id}`;
       const text = `📹 Started a Live Video Meeting in #${channelName}\nJoin Call: ${joinUrl}`;
       try {
         const res = await fetch(`/api/channels/${targetChanId}/messages`, {
@@ -427,13 +431,11 @@ export const TeamDetailPage: React.FC = () => {
 
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <button
-              onClick={() => {
-                startMeeting(`Team Meeting: ${activeTeam.name}`, { teamId: activeTeam.id });
-              }}
-              className="px-4 py-2.5 rounded-xl bg-white border border-[#E2E6E4] hover:bg-[#EAF3EF] hover:border-[#1F5E4B]/40 text-[#202524] text-xs font-bold shadow-xs flex items-center gap-2 transition"
+              onClick={() => setIsMeetingModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-white border border-[#E2E6E4] hover:bg-[#EAF3EF] hover:border-[#1F5E4B]/40 text-[#202524] text-xs font-bold shadow-xs flex items-center gap-2 transition transform active:scale-95"
             >
               <Video className="w-4 h-4 text-[#1F5E4B]" />
-              <span>Team Meet</span>
+              <span>Meet 🎥</span>
             </button>
 
             <button
@@ -511,6 +513,18 @@ export const TeamDetailPage: React.FC = () => {
         </button>
 
         <button
+          onClick={() => setActiveTab('meetings')}
+          className={`pb-3 transition relative flex items-center gap-2 shrink-0 ${
+            activeTab === 'meetings'
+              ? 'text-[#1F5E4B] border-b-2 border-[#1F5E4B] font-bold'
+              : 'text-[#6B7471] hover:text-[#202524]'
+          }`}
+        >
+          <Video className="w-4 h-4" />
+          <span>Meet 🎥</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('members')}
           className={`pb-3 transition relative flex items-center gap-2 shrink-0 ${
             activeTab === 'members'
@@ -567,6 +581,7 @@ export const TeamDetailPage: React.FC = () => {
             <div className="p-4 border-b border-[#E2E6E4] flex items-center justify-between">
               <span className="text-xs font-bold font-mono uppercase tracking-wider text-[#6B7471]">
                 Team Channels
+
               </span>
               <button
                 type="button"
@@ -723,10 +738,9 @@ export const TeamDetailPage: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      const roomId = meetingAtt?.roomId || (msg.text?.match(/\/meet\/([a-zA-Z0-9_-]+)/)?.[1] || '');
-                                      const meetingId = meetingAtt?.meetingId || roomId;
-                                      if (meetingId) {
-                                        useCommunicationStore.getState().joinMeeting(meetingId);
+                                      const roomId = meetingAtt?.roomId || meetingAtt?.meetingId || (msg.text?.match(/\/meet\/([a-zA-Z0-9_-]+)/)?.[1] || '');
+                                      if (roomId) {
+                                        navigate(`/meet/${roomId}`);
                                       }
                                     }}
                                     className="flex-1 py-2 px-3 rounded-xl bg-[#1F5E4B] hover:bg-[#2E7D5B] text-white text-xs font-bold flex items-center justify-center gap-2 transition shadow-sm"
@@ -738,8 +752,8 @@ export const TeamDetailPage: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      const roomId = meetingAtt?.roomId || (msg.text?.match(/\/meet\/([a-zA-Z0-9_-]+)/)?.[1] || '');
-                                      const joinUrl = meetingAtt?.joinUrl || `https://moduleforge-deploy-pearl.vercel.app/meet/${roomId}`;
+                                      const roomId = meetingAtt?.roomId || meetingAtt?.meetingId || (msg.text?.match(/\/meet\/([a-zA-Z0-9_-]+)/)?.[1] || '');
+                                      const joinUrl = meetingAtt?.joinUrl || `${window.location.origin}/meet/${roomId}`;
                                       navigator.clipboard.writeText(joinUrl);
                                       alert('Meeting join link copied to clipboard!');
                                     }}
@@ -1114,6 +1128,11 @@ export const TeamDetailPage: React.FC = () => {
         </div>
       )}
 
+      {/* TAB: TEAM MEETINGS */}
+      {activeTab === 'meetings' && (
+        <MeetingHistory team={activeTeam} />
+      )}
+
       {/* Invite Member Modal */}
       {isInviteModalOpen && (
         <InviteMemberModal
@@ -1125,6 +1144,19 @@ export const TeamDetailPage: React.FC = () => {
           }}
         />
       )}
+
+      {/* Start Meeting Modal */}
+      {isMeetingModalOpen && (
+        <MeetingInvite
+          isOpen={isMeetingModalOpen}
+          onClose={() => {
+            setIsMeetingModalOpen(false);
+            fetchTeamDetails(activeTeam.id);
+          }}
+          team={activeTeam}
+        />
+      )}
+
 
       {/* Quick Create Project Modal */}
       {isProjectModalOpen && (
