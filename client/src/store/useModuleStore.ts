@@ -25,11 +25,11 @@ interface ModuleState {
   setSearchQuery: (query: string) => void;
   setSortBy: (sort: string) => void;
   validateModuleZip: (file: File) => Promise<ValidationResult>;
-  validateGithubRepo: (repoUrl: string) => Promise<ValidationResult>;
+  validateGithubRepo: (repoUrl: string, githubToken?: string) => Promise<ValidationResult>;
   createModule: (metadata: ModuleMetadataInput) => Promise<{ success: boolean; module?: Module; error?: string }>;
   updateModule: (id: string, metadata: Partial<ModuleMetadataInput>) => Promise<{ success: boolean; module?: Module; error?: string }>;
   uploadModuleZip: (file: File) => Promise<ValidationResult>;
-  importGithubRepo: (repoUrl: string) => Promise<ValidationResult>;
+  importGithubRepo: (repoUrl: string, githubToken?: string) => Promise<ValidationResult>;
   deleteModule: (id: string) => Promise<{ success: boolean; error?: string }>;
   checkModuleSync: (id: string) => Promise<{ success: boolean; hasUpdate?: boolean; status?: string; error?: string }>;
   syncModule: (id: string) => Promise<{ success: boolean; module?: Module; error?: string }>;
@@ -123,11 +123,17 @@ export const useModuleStore = create<ModuleState>((set, get) => ({
     return data;
   },
 
-  validateGithubRepo: async (repoUrl: string) => {
+  validateGithubRepo: async (repoUrl: string, githubToken?: string) => {
+    const token = githubToken || localStorage.getItem('moduleforge_github_token') || '';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['x-github-token'] = token;
+    }
+
     const res = await fetch(`${API_BASE}/modules/github`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repoUrl }),
+      headers,
+      body: JSON.stringify({ repoUrl, githubToken: token }),
     });
 
     const contentType = res.headers.get('content-type') || '';

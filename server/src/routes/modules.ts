@@ -183,10 +183,12 @@ modulesRouter.post('/upload', upload.single('file'), async (req, res) => {
 // POST /api/modules/github - GitHub Import & Retrieve Repo Archive
 modulesRouter.post('/github', async (req, res) => {
   try {
-    let { repoUrl } = req.body;
+    const { repoUrl, githubToken: bodyToken } = req.body;
+    const rawToken = (bodyToken || req.headers['x-github-token'] || process.env.GITHUB_TOKEN || '') as string;
+    const githubToken = typeof rawToken === 'string' ? rawToken.trim() : '';
 
     if (!repoUrl || typeof repoUrl !== 'string') {
-      return res.status(400).json({ valid: false, error: 'GitHub repository URL is required' });
+      return res.status(400).json({ valid: false, error: 'repoUrl is required' });
     }
 
     let urlStr = repoUrl.trim();
@@ -206,26 +208,43 @@ modulesRouter.post('/github', async (req, res) => {
     const owner = match[1];
     const repo = match[2].replace(/\.git$/i, '');
 
+    const authHeaders: Record<string, string> = {
+      'User-Agent': 'ModuleForge-Platform',
+      'Accept': 'application/vnd.github+json',
+    };
+    if (githubToken) {
+      authHeaders['Authorization'] = `Bearer ${githubToken}`;
+    }
+
     // 1. Try fetching repository metadata from GitHub API (graceful fallback if rate-limited)
     let repoInfo: any = null;
     let defaultBranch = 'main';
 
     try {
       const apiRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}`, {
-        headers: { 'User-Agent': 'ModuleForge-Platform' },
-        timeout: 8000,
+        headers: authHeaders,
+        timeout: 10000,
       });
       repoInfo = apiRes.data;
       if (repoInfo.default_branch) {
         defaultBranch = repoInfo.default_branch;
       }
     } catch (e: any) {
-      console.warn(`GitHub API metadata call failed for ${owner}/${repo}:`, e.message);
-      // Fallback: Proceed to direct archive download if API rate limited or offline
+      if (e.response?.status === 404 && !githubToken) {
+        console.warn(`GitHub repo ${owner}/${repo} returned 404 (may be private and unauthenticated)`);
+      } else if (e.response?.status === 401) {
+        return res.status(401).json({
+          valid: false,
+          error: 'Invalid or expired GitHub Personal Access Token (PAT). Please verify your token permissions.',
+        });
+      } else {
+        console.warn(`GitHub API metadata call failed for ${owner}/${repo}:`, e.message);
+      }
     }
 
     // 2. Try downloading repository ZIP archive from candidate URLs
     const candidateUrls = [
+      `https://api.github.com/repos/${owner}/${repo}/zipball/${defaultBranch}`,
       `https://codeload.github.com/${owner}/${repo}/zip/HEAD`,
       `https://codeload.github.com/${owner}/${repo}/zip/refs/heads/${defaultBranch}`,
       `https://github.com/${owner}/${repo}/archive/refs/heads/${defaultBranch}.zip`,
@@ -240,8 +259,8 @@ modulesRouter.post('/github', async (req, res) => {
       try {
         const zipRes = await axios.get(url, {
           responseType: 'arraybuffer',
-          headers: { 'User-Agent': 'ModuleForge-Platform' },
-          timeout: 20000,
+          headers: authHeaders,
+          timeout: 25000,
           maxRedirects: 5,
         });
         if (zipRes.data && zipRes.data.byteLength > 100) {
@@ -254,9 +273,13 @@ modulesRouter.post('/github', async (req, res) => {
     }
 
     if (!archiveBuffer) {
+      const hint = !githubToken
+        ? ' If this is a private repository, please provide a GitHub Personal Access Token (PAT) with repo scope.'
+        : ' Please check that your GitHub token has "repo" (full control / read access to private repositories) permissions.';
+
       return res.status(404).json({
         valid: false,
-        error: `GitHub repository "${owner}/${repo}" could not be reached or downloaded. Ensure repository is public. Error: ${downloadErr || 'Download failed'}`,
+        error: `GitHub repository "${owner}/${repo}" could not be reached or downloaded.${hint} (Error: ${downloadErr || 'Download failed'})`,
       });
     }
 

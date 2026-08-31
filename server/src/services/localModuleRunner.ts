@@ -183,12 +183,21 @@ export class LocalModuleRunner {
     return null;
   }
 
-  // Unzip archive buffer directly to target directory
+  // Unzip archive buffer directly to target directory safely
   private async extractZipBufferToDisk(zipBuffer: Buffer, targetDir: string): Promise<void> {
     const zip = await JSZip.loadAsync(zipBuffer);
+    const resolvedTarget = path.resolve(targetDir);
+
     for (const relativePath of Object.keys(zip.files)) {
       const zipEntry = zip.files[relativePath];
-      const outPath = path.join(targetDir, relativePath);
+      const outPath = path.resolve(resolvedTarget, relativePath);
+
+      // Security check: prevent zip slip traversal outside target directory
+      if (!outPath.startsWith(resolvedTarget + path.sep) && outPath !== resolvedTarget) {
+        console.warn(`[Security Warning] Blocked suspicious zip entry attempting path traversal: ${relativePath}`);
+        continue;
+      }
+
       if (zipEntry.dir) {
         fs.mkdirSync(outPath, { recursive: true });
       } else {
