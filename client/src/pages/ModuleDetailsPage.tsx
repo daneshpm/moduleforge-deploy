@@ -19,17 +19,19 @@ import {
   Edit3,
   X,
   Check,
+  Boxes,
 } from 'lucide-react';
 import { Module, ModuleJson } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useModuleStore } from '../store/useModuleStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { GitHubSyncCard } from '../components/GitHubSyncCard';
+import { AddModuleToRepoModal } from '../components/AddModuleToRepoModal';
 
 export const ModuleDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { currentProject, addModuleToCurrentProject } = useProjectStore();
+  const { currentProject, projects, fetchProjects, addModuleToCurrentProject } = useProjectStore();
   const { deleteModule, updateModule } = useModuleStore();
 
   const [module, setModule] = useState<Module | null>(null);
@@ -38,6 +40,8 @@ export const ModuleDetailsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'ai' | 'files'>('overview');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showAddToRepoModal, setShowAddToRepoModal] = useState(false);
+  const [selectedTargetProject, setSelectedTargetProject] = useState<any>(null);
 
   // Edit Module Modal State
   const [showEditModal, setShowEditModal] = useState(false);
@@ -271,6 +275,24 @@ export const ModuleDetailsPage: React.FC = () => {
             </button>
 
             <button
+              onClick={() => {
+                if (currentProject) {
+                  setSelectedTargetProject(currentProject);
+                  setShowAddToRepoModal(true);
+                } else {
+                  fetchProjects().then(() => {
+                    navigate('/projects');
+                  });
+                }
+              }}
+              className="px-4 py-2 rounded-xl bg-[#EAF3EF] hover:bg-[#1F5E4B] text-[#1F5E4B] hover:text-white font-bold text-xs border border-[#1F5E4B]/20 flex items-center gap-1.5 transition shadow-xs"
+              title="Add this module files to your project's overall Git repository"
+            >
+              <Boxes className="w-4 h-4" />
+              <span>Add to Repository</span>
+            </button>
+
+            <button
               onClick={handleAdd}
               disabled={isAlreadyAdded}
               className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
@@ -284,7 +306,7 @@ export const ModuleDetailsPage: React.FC = () => {
               ) : (
                 <>
                   <Plus className="w-4 h-4" />
-                  <span>Add to Project</span>
+                  <span>Add to Canvas</span>
                 </>
               )}
             </button>
@@ -611,6 +633,26 @@ export const ModuleDetailsPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Add Module to Project Repository Modal */}
+      {selectedTargetProject && module && (
+        <AddModuleToRepoModal
+          isOpen={showAddToRepoModal}
+          onClose={() => setShowAddToRepoModal(false)}
+          project={selectedTargetProject}
+          moduleSource={{
+            type: module.sourceType === 'github' ? 'github' : 'marketplace',
+            moduleId: module.id,
+            githubUrl: module.githubUrl || undefined,
+            name: module.name,
+            version: module.version,
+            description: module.description,
+          }}
+          onSuccess={() => {
+            navigate(`/builder/${selectedTargetProject.id}`);
+          }}
+        />
       )}
     </div>
   );

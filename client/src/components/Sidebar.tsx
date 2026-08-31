@@ -11,15 +11,21 @@ import {
   Zap,
   LogOut,
   Layers,
+  X,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
 interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
+  isCollapsed?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  isOpen = false,
+  onClose,
+  isCollapsed = false,
+}) => {
   const { user, isDevMode, logout } = useAuthStore();
 
   const navItems = [
@@ -41,23 +47,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
             <Layers className="w-5 h-5 text-white" />
           </div>
           <div>
-            <div className="font-bold text-base sm:text-lg tracking-tight text-[#202524] flex items-center gap-1.5">
+            <div className="font-bold text-base sm:text-lg tracking-tight text-[#202524]">
               <span className="primary-text-gradient font-black">ModuleForge</span>
-              <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold bg-[#EAF3EF] text-[#1F5E4B] rounded border border-[#1F5E4B]/30">
-                PRO
-              </span>
             </div>
             <p className="text-[10px] sm:text-[11px] text-[#6B7471] font-mono">Software Module Platform</p>
           </div>
         </NavLink>
 
+        {/* Mobile Close Button */}
         {onClose && (
           <button
             type="button"
             onClick={onClose}
             className="md:hidden p-1.5 rounded-xl text-[#6B7471] hover:text-[#202524] hover:bg-[#F7F8F7] transition"
+            title="Close menu"
           >
-            <LogOut className="w-5 h-5 rotate-180" />
+            <X className="w-5 h-5 text-[#6B7471]" />
           </button>
         )}
       </div>
@@ -131,9 +136,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
 
   return (
     <>
-      {/* Desktop Persistent Sidebar */}
-      <aside className="hidden md:flex w-64 bg-white border-r border-[#E2E6E4] flex-col h-screen sticky top-0 z-30 shadow-sm shrink-0">
-        {sidebarContent}
+      {/* Desktop Persistent / Collapsible Sidebar */}
+      <aside
+        className={`hidden md:flex bg-white border-r border-[#E2E6E4] flex-col h-screen sticky top-0 z-30 shadow-sm shrink-0 transition-all duration-300 ease-in-out ${
+          isCollapsed ? 'w-0 overflow-hidden border-r-0 opacity-0 pointer-events-none' : 'w-64 opacity-100'
+        }`}
+      >
+        <div className="w-64 flex flex-col h-full shrink-0">
+          {sidebarContent}
+        </div>
       </aside>
 
       {/* Mobile Backdrop & Drawer */}

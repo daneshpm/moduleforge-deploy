@@ -28,9 +28,6 @@ export const LandingPage: React.FC = () => {
           </div>
           <div>
             <span className="font-black text-xl tracking-tight primary-text-gradient">ModuleForge</span>
-            <span className="ml-2 px-2 py-0.5 text-[10px] font-mono font-bold bg-[#EAF3EF] text-[#1F5E4B] rounded border border-[#1F5E4B]/30">
-              PRO EDITION
-            </span>
           </div>
         </div>
 

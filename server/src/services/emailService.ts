@@ -28,6 +28,14 @@ export interface SendTeamInviteParams {
   appUrl?: string;
 }
 
+export interface SendMeetingInviteParams {
+  to: string;
+  meetingTitle: string;
+  teamName: string;
+  hostName: string;
+  meetingUrl: string;
+}
+
 export interface SendInviteResult {
   success: boolean;
   previewUrl?: string;
@@ -37,12 +45,14 @@ export interface SendInviteResult {
   error?: string;
 }
 
+
 function cleanBaseUrl(inputUrl?: string): string {
-  let url = (inputUrl || process.env.APP_URL || 'https://moduleforge-deploy-pearl.vercel.app').trim();
+  let url = (
+    inputUrl ||
+    process.env.APP_URL ||
+    (process.env.NODE_ENV === 'production' ? 'https://moduleforge-deploy-pearl.vercel.app' : 'http://localhost:5173')
+  ).trim();
   url = url.replace(/\/+$/, '');
-  if (url.includes('localhost') || url.includes('127.0.0.1') || url.startsWith('http://localhost')) {
-    url = 'https://moduleforge-deploy-pearl.vercel.app';
-  }
   return url;
 }
 
@@ -237,7 +247,150 @@ class EmailService {
     return this.deliverEmail(to, subject, plainBody, htmlContent, gmailComposeUrl, mailtoUrl, inviteLink);
   }
 
+  public async sendMeetingInvitation(params: SendMeetingInviteParams): Promise<SendInviteResult> {
+    const { to, meetingTitle, teamName, hostName, meetingUrl } = params;
+
+    const subject = `🎥 ${meetingTitle} — Team Meeting Invitation`;
+    const plainBody = `${meetingTitle}\n\nYou have been invited to join a team meeting.\n\nTeam: ${teamName}\nHost: ${hostName}\n\nJoin Meeting: ${meetingUrl}\n\nModuleForge WebRTC`;
+
+    const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(plainBody)}`;
+    const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(plainBody)}`;
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${meetingTitle}</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #F7F8F7;
+            margin: 0;
+            padding: 24px 16px;
+            color: #202524;
+          }
+          .container {
+            max-width: 540px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 24px;
+            border: 1px solid #E2E6E4;
+            padding: 36px 32px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+          }
+          .badge {
+            display: inline-block;
+            background: #EAF3EF;
+            color: #1F5E4B;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 4px 12px;
+            border-radius: 100px;
+            border: 1px solid rgba(31, 94, 75, 0.2);
+            margin-bottom: 16px;
+          }
+          h1 {
+            font-size: 22px;
+            font-weight: 900;
+            color: #202524;
+            margin: 0 0 10px 0;
+            letter-spacing: -0.5px;
+          }
+          p {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #6B7471;
+            margin: 0 0 20px 0;
+          }
+          .highlight-box {
+            background: #F7F8F7;
+            border: 1px solid #E2E6E4;
+            border-radius: 16px;
+            padding: 18px 20px;
+            margin: 20px 0;
+            font-size: 13px;
+          }
+          .highlight-label {
+            color: #6B7471;
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            font-family: monospace;
+          }
+          .btn-container {
+            text-align: center;
+            margin: 28px 0;
+          }
+          .btn {
+            display: inline-block;
+            background: #1F5E4B;
+            color: #ffffff !important;
+            font-size: 14px;
+            font-weight: 700;
+            text-decoration: none;
+            padding: 14px 32px;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(31, 94, 75, 0.25);
+          }
+          .footer {
+            margin-top: 28px;
+            padding-top: 20px;
+            border-top: 1px solid #E2E6E4;
+            font-size: 12px;
+            color: #6B7471;
+            text-align: center;
+          }
+          .link-fallback {
+            word-break: break-all;
+            color: #1F5E4B;
+            font-size: 12px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="badge">🎥 Video Meeting</div>
+          <h1>${meetingTitle}</h1>
+          <p>You have been invited to join a live team meeting on ModuleForge.</p>
+          
+          <div class="highlight-box">
+            <div style="margin-bottom: 8px;">
+              <span class="highlight-label">Team:</span>
+              <strong style="color: #202524; margin-left: 8px;">${teamName}</strong>
+            </div>
+            <div style="margin-bottom: 8px;">
+              <span class="highlight-label">Host:</span>
+              <span style="color: #202524; font-weight: 600; margin-left: 8px;">${hostName}</span>
+            </div>
+            <div>
+              <span class="highlight-label">Meeting URL:</span>
+              <span style="color: #1F5E4B; font-family: monospace; margin-left: 8px;">${meetingUrl}</span>
+            </div>
+          </div>
+          
+          <div class="btn-container">
+            <a href="${meetingUrl}" class="btn" target="_blank">Join Meeting →</a>
+          </div>
+          
+          <div class="footer">
+            <p style="margin-bottom: 8px;">Or copy and paste this link in your browser:</p>
+            <a href="${meetingUrl}" class="link-fallback" target="_blank">${meetingUrl}</a>
+            <p style="margin-top: 16px; font-size: 11px;">ModuleForge WebRTC Meeting Platform</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    return this.deliverEmail(to, subject, plainBody, htmlContent, gmailComposeUrl, mailtoUrl, meetingUrl);
+  }
+
   private async deliverEmail(
+
     to: string,
     subject: string,
     plainBody: string,

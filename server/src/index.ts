@@ -81,15 +81,52 @@ app.use('/api/invitations', invitationsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/modules', modulesRouter);
 app.use('/api/projects', projectsRouter);
-app.use('/api/categories', categoriesRouter);
-app.use('/api/webhooks', webhooksRouter);
-app.use('/api/github/webhook', webhooksRouter);
-app.use('/api/channels', channelsRouter);
-app.use('/api/chats', directChatsRouter);
-app.use('/api/direct-chats', directChatsRouter);
-app.use('/api/calls', callsRouter);
-app.use('/api/meetings', meetingsRouter);
 app.use('/api/presence', presenceRouter);
+
+// ── GitHub Helper Routes ──────────────────────────────────────────────────────
+app.post('/api/github/connect', async (req, res) => {
+  try {
+    const { token } = req.body;
+    const testToken = token || process.env.GITHUB_TOKEN;
+    if (!testToken) {
+      return res.status(400).json({ success: false, error: 'GitHub token is required' });
+    }
+    const axios = require('axios');
+    const userRes = await axios.get('https://api.github.com/user', {
+      headers: {
+        Authorization: `Bearer ${testToken}`,
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'ModuleForge-Platform',
+      },
+      timeout: 8000,
+    });
+    res.json({
+      success: true,
+      user: {
+        login: userRes.data.login,
+        name: userRes.data.name,
+        avatarUrl: userRes.data.avatar_url,
+        publicRepos: userRes.data.public_repos,
+      },
+    });
+  } catch (e: any) {
+    res.status(401).json({
+      success: false,
+      error: e.response?.data?.message || e.message || 'GitHub connection failed',
+    });
+  }
+});
+
+app.get('/api/github/repositories', async (req, res) => {
+  try {
+    const token = (req.headers['x-github-token'] || req.query.token) as string | undefined;
+    const { projectRepoService } = require('./services/projectRepoService');
+    const repos = await projectRepoService.listUserRepositories(token);
+    res.json({ success: true, repositories: repos });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
 
 // ── Local-only routes (not supported on Vercel serverless) ────────────────────
 // These features require a persistent filesystem and long-running processes,

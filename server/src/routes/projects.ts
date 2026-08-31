@@ -8,8 +8,14 @@ import { prisma } from '../prisma';
 import { realtimeEventManager } from '../services/realtimeEvents';
 import { emailService } from '../services/emailService';
 import { generateUnifiedFrontendFiles, ModuleRuntimeSpec } from '../services/unifiedFrontendService';
+import { gitService } from '../services/gitService';
+import { projectRepoService } from '../services/projectRepoService';
+import { projectRepositoryRouter } from './projectRepository';
 
 export const projectsRouter = Router();
+
+// Mount project repository sub-router
+projectsRouter.use('/', projectRepositoryRouter);
 
 // GET /api/projects - List user projects
 projectsRouter.get('/', async (req, res) => {
@@ -28,6 +34,7 @@ projectsRouter.get('/', async (req, res) => {
       where: whereClause,
       orderBy: { updatedAt: 'desc' },
       include: {
+        repository: true,
         modules: {
           include: {
             module: true,
@@ -55,11 +62,16 @@ projectsRouter.post('/', async (req, res) => {
       userName,
       projectType = 'individual',
       visibility = 'private',
+      repositoryOption = 'create_new', // 'create_new' | 'connect_existing' | 'none'
+      repoName: inputRepoName,
+      repoDescription,
+      repoVisibility = 'private',
       gitRepositoryUrl,
       gitOwner,
       gitRepo,
       gitBranch = 'main',
       teamRepos = [],
+      githubToken,
     } = req.body;
 
     const userId = bodyUserId || (req.headers['x-user-id'] as string | undefined);
@@ -115,6 +127,7 @@ projectsRouter.post('/', async (req, res) => {
 
     const joinCode = `MF-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
+    // Create the project record
     const project = await prisma.project.create({
       data: {
         name: name.trim(),
@@ -132,6 +145,7 @@ projectsRouter.post('/', async (req, res) => {
         syncStatus: 'synced',
       },
       include: {
+        repository: true,
         modules: {
           include: {
             module: true,
@@ -140,6 +154,94 @@ projectsRouter.post('/', async (req, res) => {
         members: true,
       },
     });
+
+    // ── Overall Project Repository Provisioning ──────────────────────────────
+    if (repositoryOption === 'create_new') {
+      const userToken = githubToken?.trim();
+      if (!userToken) {
+        return res.status(400).json({
+          error:
+            'Personal GitHub access token is required to create a repository on your GitHub account. Please enter your personal token or select "No Repository" to create a local project.',
+        });
+      }
+
+      const cleanRepoName = (inputRepoName || name).trim().replace(/[^a-zA-Z0-9._-]/g, '-');
+      const ghResult = await projectRepoService.createGitHubRepo({
+        name: cleanRepoName,
+        description: repoDescription || description || `Project repository for ${cleanRepoName}`,
+        isPrivate: repoVisibility === 'private',
+        token: userToken,
+      });
+
+      if (!ghResult.success) {
+        return res.status(400).json({
+          error: ghResult.error || 'Failed to create repository on GitHub with your personal token.',
+        });
+      }
+
+      const finalUrl = ghResult.url || `https://github.com/${ghResult.owner}/${cleanRepoName}`;
+      const finalOwner = ghResult.owner || 'user';
+      const finalName = ghResult.name || cleanRepoName;
+      const defaultBranch = ghResult.defaultBranch || 'main';
+
+      // Initialize local Git repository with starter files (README, .gitignore, moduleforge.json, package.json)
+      await gitService.ensureProjectRepo(project.id, project.name, {
+        description: description || '',
+        gitUrl: finalUrl,
+        owner: finalOwner,
+        repo: finalName,
+        defaultBranch,
+        token: userToken,
+      });
+
+      // Save Repository relation
+      await prisma.repository.create({
+        data: {
+          projectId: project.id,
+          provider: 'github',
+          externalId: ghResult.externalId || null,
+          owner: finalOwner,
+          name: finalName,
+          url: finalUrl,
+          defaultBranch,
+        },
+      });
+
+      await prisma.project.update({
+        where: { id: project.id },
+        data: {
+          gitRepositoryUrl: finalUrl,
+          gitOwner: finalOwner,
+          gitRepo: finalName,
+          gitBranch: defaultBranch,
+        },
+      });
+    } else if (repositoryOption === 'connect_existing' && (gitRepositoryUrl || (parsedOwner && parsedRepo))) {
+      const userToken = githubToken?.trim();
+      const finalUrl = gitRepositoryUrl || `https://github.com/${parsedOwner}/${parsedRepo}`;
+      const finalOwner = parsedOwner || 'user';
+      const finalName = parsedRepo || name.trim().replace(/[^a-zA-Z0-9._-]/g, '-');
+
+      await gitService.ensureProjectRepo(project.id, project.name, {
+        description: description || '',
+        gitUrl: finalUrl,
+        owner: finalOwner,
+        repo: finalName,
+        defaultBranch: gitBranch || 'main',
+        token: userToken,
+      });
+
+      await prisma.repository.create({
+        data: {
+          projectId: project.id,
+          provider: 'github',
+          owner: finalOwner,
+          name: finalName,
+          url: finalUrl,
+          defaultBranch: gitBranch || 'main',
+        },
+      });
+    }
 
     if (validUserId) {
       try {
@@ -236,10 +338,11 @@ projectsRouter.post('/', async (req, res) => {
       });
     }
 
-    // Refetch project with modules included
+    // Refetch project with modules and repository included
     const fullProject = await prisma.project.findUnique({
       where: { id: project.id },
       include: {
+        repository: true,
         modules: {
           include: {
             module: true,
@@ -263,6 +366,7 @@ projectsRouter.get('/:id', async (req, res) => {
     let project = await prisma.project.findUnique({
       where: { id },
       include: {
+        repository: true,
         modules: {
           include: {
             module: true,
@@ -295,6 +399,7 @@ projectsRouter.get('/:id', async (req, res) => {
             include: { user: true },
             orderBy: { createdAt: 'desc' },
           },
+          repository: true,
         },
       });
     }
@@ -1633,12 +1738,9 @@ projectsRouter.post('/:id/members', async (req, res) => {
     }
 
     // Send Email to invitee
-    const rawOrigin = req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : undefined);
-    let appUrl = (process.env.APP_URL || rawOrigin || 'https://moduleforge-deploy-pearl.vercel.app')
-      .replace(':5000', ':5173');
-    if (appUrl.includes('localhost') || appUrl.includes('127.0.0.1')) {
-      appUrl = 'https://moduleforge-deploy-pearl.vercel.app';
-    }
+    const rawOrigin = req.body.appUrl || req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : undefined);
+    const defaultBase = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://moduleforge-deploy-pearl.vercel.app' : 'http://localhost:5173');
+    const appUrl = (rawOrigin || defaultBase).replace(':5000', ':5173').replace(/\/+$/, '');
 
     const emailRes = await emailService.sendProjectInvitation({
       to: email.toLowerCase(),

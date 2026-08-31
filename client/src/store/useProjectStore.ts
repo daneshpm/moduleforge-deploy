@@ -103,13 +103,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error('Failed to create project');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || 'Failed to create project');
+      }
       const project = await res.json();
       get().fetchProjects();
       return project;
     } catch (e: any) {
       set({ error: e.message });
-      return null;
+      throw e;
     }
   },
 

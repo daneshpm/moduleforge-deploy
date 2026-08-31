@@ -237,7 +237,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
                 <span className="w-2 h-2 rounded-full bg-[#2E7D5B] animate-pulse" />
                 <span className="text-[#202524] font-semibold">Platform Online</span>
               </span>
-              <span className="text-[11px] text-[#1F5E4B] font-bold">PRO EDITION</span>
             </div>
           </div>
 
@@ -551,7 +550,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
 
       {/* Footer */}
       <footer className="py-4 text-center text-[11px] text-[#6B7471] font-mono z-10">
-        ModuleForge © {new Date().getFullYear()} • Pro Edition
+        ModuleForge © {new Date().getFullYear()}
       </footer>
 
       {/* Forgot Password Modal */}
