@@ -16,6 +16,7 @@ import {
   Loader2,
   Calendar,
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { TeamIssue, IssuePriority, IssueStatus, IssueAuthor } from '../../types/issues';
 import { useAuthStore } from '../../store/useAuthStore';
 
@@ -170,8 +171,19 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
   const isOpen = currentIssue.status !== 'closed';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in select-none">
-      <div className="bg-white border border-[#E2E6E4] rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none"
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 15 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 320 }}
+        className="bg-white border border-[#E2E6E4] rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
+      >
         {/* Header */}
         <header className="p-6 border-b border-[#E2E6E4] bg-white flex items-start justify-between gap-4">
           <div className="space-y-2">
@@ -266,9 +278,12 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
                 </h4>
 
                 {currentIssue.comments.map((comment) => (
-                  <div
+                  <motion.div
                     key={comment.id}
-                    className="p-4 rounded-2xl bg-white border border-[#E2E6E4] shadow-xs space-y-2.5 animate-fade-in"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="p-4 rounded-2xl bg-white border border-[#E2E6E4] shadow-xs space-y-2.5"
                   >
                     <div className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
@@ -296,7 +311,7 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
                     <div className="text-xs text-[#202524] font-sans leading-relaxed pl-8">
                       {comment.content}
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             )}
@@ -430,7 +445,7 @@ export const IssueDetailModal: React.FC<IssueDetailModalProps> = ({
             </div>
           </aside>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };

@@ -35,8 +35,11 @@ interface ProjectState {
   addModuleToCurrentProject: (module: Module) => void;
   applySynthesizedArchitecture: (items: Array<{ module: Module; xPosition: number; yPosition: number }>) => void;
   removeModuleFromCurrentProject: (moduleId: string) => void;
-  updateModulePosition: (moduleId: string, x: number, y: number) => void;
   exportProjectZip: (projectId: string) => Promise<void>;
+  createGitHubRepo: (
+    projectId: string,
+    params: { repoName?: string; description?: string; isPrivate?: boolean; githubToken?: string }
+  ) => Promise<{ success: boolean; repoUrl?: string; cloneUrl?: string; repoName?: string; error?: string }>;
   inviteMember: (projectId: string, email: string, role?: string) => Promise<{ success: boolean; member?: any; inviteToken?: string; inviteLink?: string; gmailComposeUrl?: string; mailtoUrl?: string; previewUrl?: string; error?: string }>;
   removeMember: (projectId: string, memberId: string) => Promise<{ success: boolean; error?: string }>;
   approveMember: (projectId: string, memberId: string) => Promise<{ success: boolean; member?: any; error?: string }>;
@@ -391,6 +394,51 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     } catch (e: any) {
       console.error('Export error:', e);
       alert(`Export failed: ${e.message}`);
+    }
+  },
+
+  createGitHubRepo: async (
+    projectId: string,
+    params: { repoName?: string; description?: string; isPrivate?: boolean; githubToken?: string }
+  ) => {
+    try {
+      const { currentProject } = get();
+      if (currentProject && currentProject.id === projectId) {
+        await get().saveCurrentProject();
+      }
+
+      const token = params.githubToken || localStorage.getItem('moduleforge_github_token') || undefined;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['x-github-token'] = token;
+      }
+
+      const res = await fetch(`${API_BASE}/projects/${projectId}/create-github-repo`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          repoName: params.repoName,
+          description: params.description,
+          isPrivate: params.isPrivate ?? true,
+          githubToken: token,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create GitHub repository');
+      }
+
+      return {
+        success: true,
+        repoUrl: data.repoUrl,
+        cloneUrl: data.cloneUrl,
+        repoName: data.repoName,
+      };
+    } catch (e: any) {
+      return { success: false, error: e.message };
     }
   },
 

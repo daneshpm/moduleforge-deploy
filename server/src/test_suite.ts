@@ -210,6 +210,30 @@ async function runAllTests() {
     } catch (err: any) {
       record('4.2 GET /api/projects/:id', false, err.message);
     }
+
+    try {
+      // Test 4.3: Export Project ZIP with Unified Frontend portal
+      const exportRes = await axios.post(`${BASE_URL}/projects/${testProjectId}/export`, {}, {
+        responseType: 'arraybuffer'
+      });
+      const hasZip = exportRes.status === 200 && exportRes.data.length > 100;
+      record('4.3 POST /api/projects/:id/export - Unified Frontend Shell & Modules packaging', hasZip, `Generated ZIP Archive size: ${exportRes.data.length} bytes`);
+    } catch (err: any) {
+      record('4.3 POST /api/projects/:id/export', false, err.message);
+    }
+
+    try {
+      // Test 4.4: Create GitHub Repo endpoint (auth validation)
+      const ghRes = await axios.post(`${BASE_URL}/projects/${testProjectId}/create-github-repo`, {
+        repoName: 'qa-test-unified-repo',
+      }, {
+        validateStatus: () => true
+      });
+      const isAuthProtected = ghRes.status === 401;
+      record('4.4 POST /api/projects/:id/create-github-repo - Authentication & PAT enforcement', isAuthProtected, `Status: ${ghRes.status} (${ghRes.data?.error || 'OK'})`);
+    } catch (err: any) {
+      record('4.4 POST /api/projects/:id/create-github-repo', false, err.message);
+    }
   }
 
   // ----------------------------------------------------

@@ -759,9 +759,10 @@ modulesRouter.delete('/:id', async (req, res) => {
       }
     }
 
-    // 2. Delete module versions & project module associations first
-    await prisma.moduleVersion.deleteMany({ where: { moduleId: module.id } });
-    await prisma.projectModule.deleteMany({ where: { moduleId: module.id } });
+    // 2. Delete module versions, sync logs, and project module associations first
+    await (prisma as any).moduleSync.deleteMany({ where: { moduleId: module.id } }).catch(() => {});
+    await prisma.moduleVersion.deleteMany({ where: { moduleId: module.id } }).catch(() => {});
+    await prisma.projectModule.deleteMany({ where: { moduleId: module.id } }).catch(() => {});
 
     // 3. Delete module record from database
     await prisma.module.delete({

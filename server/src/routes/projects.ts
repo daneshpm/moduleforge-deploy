@@ -7,6 +7,7 @@ import axios from 'axios';
 import { prisma } from '../prisma';
 import { realtimeEventManager } from '../services/realtimeEvents';
 import { emailService } from '../services/emailService';
+import { generateUnifiedFrontendFiles, ModuleRuntimeSpec } from '../services/unifiedFrontendService';
 
 export const projectsRouter = Router();
 
@@ -1099,6 +1100,29 @@ app.listen(PORT, () => {
       }
     }
 
+    // 5. Build Unified Master Vite + React Frontend Portal inside `frontend/`
+    const runtimeSpecsList: ModuleRuntimeSpec[] = project.modules.map((pm, idx) => {
+      const mod = pm.module;
+      const assignedPort = mod.frontendPort && mod.frontendPort !== 5173 ? mod.frontendPort : (3000 + idx);
+      const assignedBackend = mod.backendPort && mod.backendPort !== 5000 ? mod.backendPort : (5000 + idx);
+      return {
+        name: mod.name,
+        slug: mod.slug || mod.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+        folderName: mod.name.replace(/[^a-zA-Z0-9_-]/g, '_'),
+        frontendPort: assignedPort,
+        backendPort: assignedBackend,
+        frontendCommand: mod.frontendCommand || `npx vite --host 0.0.0.0 --port ${assignedPort}`,
+        backendCommand: mod.backendCommand || `node server.js`,
+        category: mod.categoryName || 'General',
+        description: mod.description || '',
+      };
+    });
+
+    const unifiedFiles = generateUnifiedFrontendFiles(project, runtimeSpecsList);
+    for (const [relPath, fileContent] of Object.entries(unifiedFiles)) {
+      rootZip.file(relPath, fileContent);
+    }
+
     // Generate export ZIP buffer
     const exportBuffer = await rootZip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 
@@ -1111,6 +1135,226 @@ app.listen(PORT, () => {
   } catch (error: any) {
     console.error('Export ZIP error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/projects/:id/create-github-repo - Directly create GitHub repository & push unified project
+projectsRouter.post('/:id/create-github-repo', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { repoName, description, isPrivate = true, githubToken: bodyToken } = req.body;
+    const githubToken = (bodyToken || req.headers['x-github-token'] || '') as string;
+
+    if (!githubToken.trim()) {
+      return res.status(401).json({
+        error: 'GitHub Personal Access Token is required to create a repository. Please enter a token with "repo" scope or save it in Settings ⚙️.'
+      });
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: {
+        modules: {
+          include: {
+            module: true,
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const authHeaders = {
+      Authorization: `Bearer ${githubToken.trim()}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'ModuleForge-Platform',
+    };
+
+    // 1. Verify GitHub Token & get authenticated user
+    let userRes;
+    try {
+      userRes = await axios.get('https://api.github.com/user', { headers: authHeaders, timeout: 8000 });
+    } catch (err: any) {
+      return res.status(401).json({
+        error: `Invalid GitHub Token: ${err.response?.data?.message || err.message}`
+      });
+    }
+
+    const owner = userRes.data.login;
+    const rawRepoName = repoName || project.name;
+    const finalRepoName = rawRepoName.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+
+    // 2. Create GitHub repository
+    let createdRepo;
+    try {
+      const createRepoRes = await axios.post(
+        'https://api.github.com/user/repos',
+        {
+          name: finalRepoName,
+          description: description || project.description || `Assembled from ModuleForge Platform - ${project.name}`,
+          private: Boolean(isPrivate),
+          auto_init: true, // Auto init creates main branch with initial commit
+        },
+        { headers: authHeaders, timeout: 8000 }
+      );
+      createdRepo = createRepoRes.data;
+    } catch (err: any) {
+      if (err.response?.status === 422) {
+        // Repo might already exist, try to fetch it
+        try {
+          const existing = await axios.get(`https://api.github.com/repos/${owner}/${finalRepoName}`, { headers: authHeaders, timeout: 8000 });
+          createdRepo = existing.data;
+        } catch (_) {
+          return res.status(400).json({ error: `Repository "${finalRepoName}" already exists on GitHub.` });
+        }
+      } else {
+        return res.status(err.response?.status || 500).json({
+          error: `Failed to create GitHub repository: ${err.response?.data?.message || err.message}`
+        });
+      }
+    }
+
+    // 3. Assemble all Project Files in-memory
+    let portCounter = 3000;
+    const runtimeSpecsList: ModuleRuntimeSpec[] = project.modules.map((pm, idx) => {
+      const mod = pm.module;
+      const assignedPort = mod.frontendPort && mod.frontendPort !== 5173 ? mod.frontendPort : (3000 + idx);
+      const assignedBackend = mod.backendPort && mod.backendPort !== 5000 ? mod.backendPort : (5000 + idx);
+      return {
+        name: mod.name,
+        slug: mod.slug || mod.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+        folderName: mod.name.replace(/[^a-zA-Z0-9_-]/g, '_'),
+        frontendPort: assignedPort,
+        backendPort: assignedBackend,
+        frontendCommand: mod.frontendCommand || `npx vite --host 0.0.0.0 --port ${assignedPort}`,
+        backendCommand: mod.backendCommand || `node server.js`,
+        category: mod.categoryName || 'General',
+        description: mod.description || '',
+      };
+    });
+
+    const unifiedFiles = generateUnifiedFrontendFiles(project, runtimeSpecsList);
+
+    const fileEntries: Array<{ path: string; content: string }> = [];
+
+    // A. Add Unified Frontend files
+    for (const [relPath, content] of Object.entries(unifiedFiles)) {
+      fileEntries.push({ path: relPath, content });
+    }
+
+    // B. Add Root Files (README, docker-compose, .env.example)
+    fileEntries.push({
+      path: 'README.md',
+      content: `# ${project.name}\n\n${project.description || 'Modular application composed via ModuleForge Platform.'}\n\n## 🛠️ System Architecture\n- **Unified Frontend Shell**: \`frontend/\` (Vite + React Master Portal on Port 4000)\n- **Integrated Micro-Frontends**:\n${runtimeSpecsList.map(m => `  - **${m.name}** (\`${m.category}\`): Port \`${m.frontendPort}\` via \`${m.frontendCommand}\``).join('\n')}\n\n## 🚀 Quickstart\n\`\`\`bash\n# 1. Install & Launch Unified Frontend Portal\ncd frontend\nnpm install\nnpm run dev\n\`\`\`\n\nOpen **http://localhost:4000** to access the complete application.`
+    });
+
+    fileEntries.push({
+      path: '.env.example',
+      content: `# Global Environment Configuration for ${project.name}\nPORT=4000\nNODE_ENV=development\n${runtimeSpecsList.map(m => `VITE_${m.slug.toUpperCase().replace(/-/g, '_')}_URL=http://localhost:${m.frontendPort}`).join('\n')}\n`
+    });
+
+    fileEntries.push({
+      path: 'docker-compose.yml',
+      content: `version: '3.8'\nservices:\n  unified-frontend:\n    build: ./frontend\n    ports:\n      - "4000:4000"\n${runtimeSpecsList.map(m => `  ${m.slug}:\n    build: ./modules/${m.folderName}\n    ports:\n      - "${m.frontendPort}:${m.frontendPort}"`).join('\n')}\n`
+    });
+
+    // C. Add modules metadata
+    for (const pm of project.modules) {
+      const mod = pm.module;
+      const folderName = mod.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+      fileEntries.push({
+        path: `modules/${folderName}/README.md`,
+        content: `# ${mod.name}\n\n${mod.description}\n\n- **Category**: ${mod.categoryName}\n- **Version**: ${mod.version}\n- **Frontend Port**: ${mod.frontendPort || 3000}\n- **Launch Command**: \`${mod.frontendCommand || 'npm run dev'}\`\n`
+      });
+    }
+
+    // 4. Commit files to GitHub repository using Git Data API
+    const repoInfoRes = await axios.get(`https://api.github.com/repos/${owner}/${finalRepoName}`, { headers: authHeaders });
+    const defaultBranch = repoInfoRes.data.default_branch || 'main';
+
+    let baseTreeSha: string | undefined;
+    let parentCommitSha: string | undefined;
+
+    try {
+      const refRes = await axios.get(`https://api.github.com/repos/${owner}/${finalRepoName}/git/ref/heads/${defaultBranch}`, { headers: authHeaders });
+      parentCommitSha = refRes.data.object.sha;
+      const commitRes = await axios.get(`https://api.github.com/repos/${owner}/${finalRepoName}/git/commits/${parentCommitSha}`, { headers: authHeaders });
+      baseTreeSha = commitRes.data.tree.sha;
+    } catch (_) {
+      // fresh repo
+    }
+
+    // Create Blobs & Tree
+    const treeItems = [];
+    for (const file of fileEntries) {
+      try {
+        const blobRes = await axios.post(
+          `https://api.github.com/repos/${owner}/${finalRepoName}/git/blobs`,
+          {
+            content: file.content,
+            encoding: 'utf-8'
+          },
+          { headers: authHeaders }
+        );
+        treeItems.push({
+          path: file.path,
+          mode: '100644',
+          type: 'blob',
+          sha: blobRes.data.sha,
+        });
+      } catch (blobErr: any) {
+        console.warn(`Failed to create blob for ${file.path}:`, blobErr.message);
+      }
+    }
+
+    const newTreeRes = await axios.post(
+      `https://api.github.com/repos/${owner}/${finalRepoName}/git/trees`,
+      {
+        base_tree: baseTreeSha,
+        tree: treeItems,
+      },
+      { headers: authHeaders }
+    );
+
+    const newCommitRes = await axios.post(
+      `https://api.github.com/repos/${owner}/${finalRepoName}/git/commits`,
+      {
+        message: `feat: deploy ${project.name} with Unified Master Frontend Shell & Modules via ModuleForge`,
+        tree: newTreeRes.data.sha,
+        parents: parentCommitSha ? [parentCommitSha] : [],
+      },
+      { headers: authHeaders }
+    );
+
+    // Update ref heads/main
+    if (parentCommitSha) {
+      await axios.patch(
+        `https://api.github.com/repos/${owner}/${finalRepoName}/git/refs/heads/${defaultBranch}`,
+        { sha: newCommitRes.data.sha, force: true },
+        { headers: authHeaders }
+      );
+    } else {
+      await axios.post(
+        `https://api.github.com/repos/${owner}/${finalRepoName}/git/refs`,
+        { ref: `refs/heads/${defaultBranch}`, sha: newCommitRes.data.sha },
+        { headers: authHeaders }
+      );
+    }
+
+    res.json({
+      success: true,
+      repoUrl: createdRepo.html_url,
+      cloneUrl: createdRepo.clone_url,
+      repoName: createdRepo.name,
+      owner: createdRepo.owner?.login || owner,
+      isPrivate: createdRepo.private,
+      message: `Repository "${finalRepoName}" successfully created and pushed to GitHub!`
+    });
+  } catch (error: any) {
+    console.error('Error creating GitHub repository for project:', error);
+    res.status(500).json({ error: error.response?.data?.message || error.message });
   }
 });
 

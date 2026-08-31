@@ -13,6 +13,7 @@ import {
   ArrowRight,
   ShieldCheck,
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { SynthesizedArchitecture } from '../services/aiWeaverService';
 
 interface ArchitectureGlueModalProps {
@@ -48,8 +49,19 @@ export const ArchitectureGlueModal: React.FC<ArchitectureGlueModalProps> = ({
     .join('\n');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in select-none">
-      <div className="bg-white border border-[#E2E6E4] rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none"
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 15 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 320 }}
+        className="bg-white border border-[#E2E6E4] rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
+      >
         {/* Header */}
         <header className="p-5 border-b border-[#E2E6E4] bg-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -234,7 +246,7 @@ export const ArchitectureGlueModal: React.FC<ArchitectureGlueModalProps> = ({
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };

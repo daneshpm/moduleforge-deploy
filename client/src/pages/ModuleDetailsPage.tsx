@@ -23,6 +23,7 @@ import {
 import { Module, ModuleJson } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useModuleStore } from '../store/useModuleStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { GitHubSyncCard } from '../components/GitHubSyncCard';
 
 export const ModuleDetailsPage: React.FC = () => {

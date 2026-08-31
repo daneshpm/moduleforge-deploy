@@ -1,8 +1,11 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, Github, Plus, Layers, ShieldCheck, Trash2, ExternalLink } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { Module } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
+import { useAuthStore } from '../store/useAuthStore';
+import { useModuleStore } from '../store/useModuleStore';
 
 interface ModuleCardProps {
   module: Module;
@@ -13,6 +16,21 @@ interface ModuleCardProps {
 export const ModuleCard: React.FC<ModuleCardProps> = ({ module, onAddToProject, onDeleteModule }) => {
   const navigate = useNavigate();
   const { currentProject, addModuleToCurrentProject } = useProjectStore();
+  const { user } = useAuthStore();
+  const { deleteModule, fetchModules } = useModuleStore();
+
+  const isOwner = Boolean(
+    user && (
+      (module.authorId && (user.id === module.authorId || user.email === module.authorId)) ||
+      (module.author && (
+        user.name?.toLowerCase() === module.author.toLowerCase() ||
+        user.username?.toLowerCase() === module.author.toLowerCase() ||
+        user.email?.split('@')[0]?.toLowerCase() === module.author.toLowerCase() ||
+        user.id === module.author
+      )) ||
+      user.isDev
+    )
+  );
 
   const technologies =
     Array.isArray(module.technologies) && module.technologies.length > 0
@@ -46,9 +64,15 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({ module, onAddToProject, 
   };
 
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      whileHover={{ y: -4, transition: { duration: 0.2, ease: 'easeOut' } }}
+      transition={{ duration: 0.25 }}
       onClick={() => navigate(`/modules/${module.id}`)}
-      className="bg-white rounded-2xl p-5 border border-[#E2E6E4] hover:border-[#1F5E4B] cursor-pointer flex flex-col justify-between group relative overflow-hidden transition-all duration-200 shadow-card hover:shadow-card-hover"
+      className="bg-white rounded-2xl p-5 border border-[#E2E6E4] hover:border-[#1F5E4B] cursor-pointer flex flex-col justify-between group relative overflow-hidden shadow-card hover:shadow-card-hover"
     >
       {/* Top Banner Accent */}
       <div className="absolute top-0 left-0 right-0 h-1 bg-[#1F5E4B] opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -152,14 +176,25 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({ module, onAddToProject, 
             </a>
           )}
 
-          {onDeleteModule && (
+          {(isOwner || onDeleteModule) && (
             <button
-              onClick={(e) => {
+              onClick={async (e) => {
                 e.stopPropagation();
-                onDeleteModule(module);
+                if (onDeleteModule) {
+                  onDeleteModule(module);
+                  return;
+                }
+                if (window.confirm(`Are you sure you want to delete module "${module.name}" (v${module.version})? This action cannot be undone.`)) {
+                  const res = await deleteModule(module.id);
+                  if (res.success) {
+                    fetchModules();
+                  } else {
+                    alert(res.error || 'Failed to delete module');
+                  }
+                }
               }}
               className="p-1.5 rounded-xl bg-[#F7F8F7] hover:bg-[#FDF3F3] text-[#6B7471] hover:text-[#C94A4A] border border-[#E2E6E4] hover:border-[#C94A4A]/30 transition"
-              title="Delete Module Folder"
+              title="Delete your module"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -185,6 +220,6 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({ module, onAddToProject, 
           </button>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };

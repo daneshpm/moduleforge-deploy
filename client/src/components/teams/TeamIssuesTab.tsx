@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Loader2,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { TeamIssue, IssuePriority } from '../../types/issues';
 import { CreateIssueModal } from './CreateIssueModal';
 import { IssueDetailModal } from './IssueDetailModal';
@@ -215,118 +216,129 @@ export const TeamIssuesTab: React.FC<TeamIssuesTabProps> = ({ team }) => {
             </button>
           </div>
         ) : (
-          issues.map((issue) => {
-            const isOpen = issue.status !== 'closed';
+          <AnimatePresence mode="popLayout">
+            {issues.map((issue) => {
+              const isOpen = issue.status !== 'closed';
 
-            return (
-              <div
-                key={issue.id}
-                onClick={() => setSelectedIssue(issue)}
-                className="p-4 sm:p-5 hover:bg-[#FAFBFA] transition cursor-pointer flex items-start justify-between gap-4"
-              >
-                <div className="flex items-start gap-3.5">
-                  {/* Status Icon */}
-                  <div className="pt-0.5">
-                    {isOpen ? (
-                      <CircleDot className="w-4 h-4 text-[#1F5E4B] shrink-0" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4 text-[#9333EA] shrink-0" />
+              return (
+                <motion.div
+                  layout
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ duration: 0.2 }}
+                  key={issue.id}
+                  onClick={() => setSelectedIssue(issue)}
+                  className="p-4 sm:p-5 hover:bg-[#FAFBFA] transition cursor-pointer flex items-start justify-between gap-4"
+                >
+                  <div className="flex items-start gap-3.5">
+                    {/* Status Icon */}
+                    <div className="pt-0.5">
+                      {isOpen ? (
+                        <CircleDot className="w-4 h-4 text-[#1F5E4B] shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-[#9333EA] shrink-0" />
+                      )}
+                    </div>
+
+                    {/* Title & Metadata */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-[#202524] hover:text-[#1F5E4B] transition">
+                          {issue.title}
+                        </span>
+
+                        {/* Label Tags */}
+                        {issue.labels.map((lbl) => (
+                          <span
+                            key={lbl}
+                            className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-[#EAF3EF] text-[#1F5E4B] border border-[#1F5E4B]/20"
+                          >
+                            {lbl}
+                          </span>
+                        ))}
+
+                        {/* Priority Tag */}
+                        {getPriorityBadge(issue.priority)}
+                      </div>
+
+                      <p className="text-xs text-[#6B7471] font-sans flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-[#202524] font-semibold">#{issue.issueNumber}</span>
+                        <span>opened by @{issue.author.username}</span>
+                        <span>•</span>
+                        <span>{new Date(issue.createdAt).toLocaleDateString()}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right Side: Assignee & Comments Count */}
+                  <div className="flex items-center gap-4 shrink-0">
+                    {issue.assignee && (
+                      <div
+                        className="flex items-center gap-1.5 text-xs text-[#6B7471]"
+                        title={`Assigned to ${issue.assignee.name}`}
+                      >
+                        <img
+                          src={
+                            issue.assignee.avatarUrl ||
+                            `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(issue.assignee.name)}`
+                          }
+                          alt={issue.assignee.name}
+                          className="w-5 h-5 rounded-full ring-1 ring-[#E2E6E4]"
+                        />
+                        <span className="hidden sm:inline text-[11px] font-mono font-medium">
+                          @{issue.assignee.username}
+                        </span>
+                      </div>
+                    )}
+
+                    {issue.comments.length > 0 && (
+                      <div className="flex items-center gap-1 text-xs text-[#6B7471] font-mono font-semibold">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>{issue.comments.length}</span>
+                      </div>
                     )}
                   </div>
-
-                  {/* Title & Metadata */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-sm text-[#202524] hover:text-[#1F5E4B] transition">
-                        {issue.title}
-                      </span>
-
-                      {/* Label Tags */}
-                      {issue.labels.map((lbl) => (
-                        <span
-                          key={lbl}
-                          className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-[#EAF3EF] text-[#1F5E4B] border border-[#1F5E4B]/20"
-                        >
-                          {lbl}
-                        </span>
-                      ))}
-
-                      {/* Priority Tag */}
-                      {getPriorityBadge(issue.priority)}
-                    </div>
-
-                    <p className="text-xs text-[#6B7471] font-sans flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-[#202524] font-semibold">#{issue.issueNumber}</span>
-                      <span>opened by @{issue.author.username}</span>
-                      <span>•</span>
-                      <span>{new Date(issue.createdAt).toLocaleDateString()}</span>
-                    </p>
-                  </div>
-                </div>
-
-                {/* Right Side: Assignee & Comments Count */}
-                <div className="flex items-center gap-4 shrink-0">
-                  {issue.assignee && (
-                    <div
-                      className="flex items-center gap-1.5 text-xs text-[#6B7471]"
-                      title={`Assigned to ${issue.assignee.name}`}
-                    >
-                      <img
-                        src={
-                          issue.assignee.avatarUrl ||
-                          `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(issue.assignee.name)}`
-                        }
-                        alt={issue.assignee.name}
-                        className="w-5 h-5 rounded-full ring-1 ring-[#E2E6E4]"
-                      />
-                      <span className="hidden sm:inline text-[11px] font-mono font-medium">
-                        @{issue.assignee.username}
-                      </span>
-                    </div>
-                  )}
-
-                  {issue.comments.length > 0 && (
-                    <div className="flex items-center gap-1 text-xs text-[#6B7471] font-mono font-semibold">
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      <span>{issue.comments.length}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         )}
       </div>
 
       {/* Create Issue Modal */}
-      {isCreateModalOpen && (
-        <CreateIssueModal
-          teamId={team.id}
-          teamMembers={team.members}
-          onClose={() => setIsCreateModalOpen(false)}
-          onCreated={fetchIssues}
-        />
-      )}
+      <AnimatePresence>
+        {isCreateModalOpen && (
+          <CreateIssueModal
+            teamId={team.id}
+            teamMembers={team.members}
+            onClose={() => setIsCreateModalOpen(false)}
+            onCreated={fetchIssues}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Issue Detail / Discussion Modal */}
-      {selectedIssue && (
-        <IssueDetailModal
-          teamId={team.id}
-          issue={selectedIssue}
-          teamMembers={team.members}
-          onClose={() => setSelectedIssue(null)}
-          onUpdated={() => {
-            fetchIssues();
-            // Also refresh active selected issue if still open
-            fetch(`/api/teams/${team.id}/issues/${selectedIssue.id}`)
-              .then((res) => res.json())
-              .then((data) => {
-                if (data.issue) setSelectedIssue(data.issue);
-              })
-              .catch(() => {});
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {selectedIssue && (
+          <IssueDetailModal
+            teamId={team.id}
+            issue={selectedIssue}
+            teamMembers={team.members}
+            onClose={() => setSelectedIssue(null)}
+            onUpdated={() => {
+              fetchIssues();
+              // Also refresh active selected issue if still open
+              fetch(`/api/teams/${team.id}/issues/${selectedIssue.id}`)
+                .then((res) => res.json())
+                .then((data) => {
+                  if (data.issue) setSelectedIssue(data.issue);
+                })
+                .catch(() => {});
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
