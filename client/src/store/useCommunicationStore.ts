@@ -430,12 +430,16 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
 
         // Connect to LiveKit SFU if serverUrl is present
         if (data.serverUrl && data.token) {
-          await mediaService.joinLiveKitRoom({
-            serverUrl: data.serverUrl,
-            token: data.token,
-            videoEnabled: type === 'video',
-            audioEnabled: true,
-          });
+          try {
+            await mediaService.joinLiveKitRoom({
+              serverUrl: data.serverUrl,
+              token: data.token,
+              videoEnabled: type === 'video',
+              audioEnabled: true,
+            });
+          } catch (lkErr) {
+            console.warn('LiveKit SFU connection fallback to direct stream:', lkErr);
+          }
         }
 
         return true;
@@ -495,12 +499,16 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
       get().updatePresence('busy', undefined, call.type === 'video' ? 'video_call' : 'voice_call');
 
       if (tokenData.serverUrl && tokenData.token) {
-        await mediaService.joinLiveKitRoom({
-          serverUrl: tokenData.serverUrl,
-          token: tokenData.token,
-          videoEnabled: call.type === 'video',
-          audioEnabled: true,
-        });
+        try {
+          await mediaService.joinLiveKitRoom({
+            serverUrl: tokenData.serverUrl,
+            token: tokenData.token,
+            videoEnabled: call.type === 'video',
+            audioEnabled: true,
+          });
+        } catch (lkErr) {
+          console.warn('LiveKit SFU connection fallback to direct stream:', lkErr);
+        }
       }
 
       return true;
@@ -645,12 +653,16 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
         get().updatePresence('busy', undefined, 'meeting');
 
         if (data.serverUrl && data.token) {
-          await mediaService.joinLiveKitRoom({
-            serverUrl: data.serverUrl,
-            token: data.token,
-            videoEnabled: true,
-            audioEnabled: true,
-          });
+          try {
+            await mediaService.joinLiveKitRoom({
+              serverUrl: data.serverUrl,
+              token: data.token,
+              videoEnabled: true,
+              audioEnabled: true,
+            });
+          } catch (lkErr) {
+            console.warn('LiveKit SFU connection fallback:', lkErr);
+          }
         }
 
         get().loadActiveMeetings();
@@ -697,12 +709,16 @@ export const useCommunicationStore = create<CommunicationState>((set, get) => ({
         get().updatePresence('busy', undefined, 'meeting');
 
         if (data.serverUrl && data.token) {
-          await mediaService.joinLiveKitRoom({
-            serverUrl: data.serverUrl,
-            token: data.token,
-            videoEnabled: true,
-            audioEnabled: true,
-          });
+          try {
+            await mediaService.joinLiveKitRoom({
+              serverUrl: data.serverUrl,
+              token: data.token,
+              videoEnabled: true,
+              audioEnabled: true,
+            });
+          } catch (lkErr) {
+            console.warn('LiveKit SFU connection fallback:', lkErr);
+          }
         }
 
         return true;
