@@ -93,6 +93,9 @@ export const useTeamStore = create<TeamState>((set, get) => ({
           name,
           description,
           ownerId: user.id,
+          ownerEmail: user.email,
+          ownerName: user.name,
+          ownerUsername: user.username,
         }),
       });
 

@@ -33,6 +33,7 @@ interface ProjectState {
   saveCurrentProject: () => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   addModuleToCurrentProject: (module: Module) => void;
+  applySynthesizedArchitecture: (items: Array<{ module: Module; xPosition: number; yPosition: number }>) => void;
   removeModuleFromCurrentProject: (moduleId: string) => void;
   updateModulePosition: (moduleId: string, x: number, y: number) => void;
   exportProjectZip: (projectId: string) => Promise<void>;
@@ -306,6 +307,28 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     };
 
     set({ currentProject: updatedProject });
+  },
+
+  applySynthesizedArchitecture: (items: Array<{ module: Module; xPosition: number; yPosition: number }>) => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+
+    const newProjectModules: ProjectModule[] = items.map((item, index) => ({
+      id: `pm-${Date.now()}-${index}`,
+      projectId: currentProject.id,
+      moduleId: item.module.id,
+      module: item.module,
+      moduleVersion: item.module.version,
+      xPosition: item.xPosition,
+      yPosition: item.yPosition,
+    }));
+
+    set({
+      currentProject: {
+        ...currentProject,
+        modules: newProjectModules,
+      },
+    });
   },
 
   removeModuleFromCurrentProject: (moduleId: string) => {

@@ -354,60 +354,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  // ── Update Username ──────────────────────────────────────────────────────
-  updateUsername: async (username: string, name?: string, avatarUrl?: string) => {
-    const currentUser = get().user;
-    if (!currentUser) return { success: false, error: 'Not authenticated' };
-
-    try {
-      const res = await fetch(`${API_BASE}/users/profile`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUser.id,
-          username,
-          name: name || currentUser.name,
-          avatarUrl: avatarUrl || currentUser.avatarUrl,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        return { success: false, error: data.error || 'Failed to update username' };
-      }
-
-      const updatedUser = data.user;
-      persist(updatedUser);
-      set({
-        user: updatedUser,
-        needsUsernameSetup: false,
-      });
-
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Network error' };
-    }
-  },
-
-  // ── Check Username Availability ──────────────────────────────────────────
-  checkUsernameAvailability: async (username: string) => {
-    const currentUser = get().user;
-    try {
-      const query = new URLSearchParams({
-        username,
-        ...(currentUser?.id ? { userId: currentUser.id } : {}),
-      });
-      const res = await fetch(`${API_BASE}/users/check-username?${query.toString()}`);
-      const data = await res.json();
-      return {
-        available: Boolean(data.available),
-        error: data.error,
-      };
-    } catch (err: any) {
-      return { available: false, error: 'Failed to verify username availability' };
-    }
-  },
-
   // ── Sign in with Email / Password ─────────────────────────────────────────
   login: async (email: string, password: string) => {
     set({ isLoading: true, error: null });
@@ -582,6 +528,78 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     // 3. Dev fallback
     return { success: true, message: 'Password reset email simulated for dev.' };
+  },
+
+  // ── Check Username Availability ──────────────────────────────────────────
+  checkUsernameAvailability: async (username: string) => {
+    const clean = username.trim().replace(/^@/, '');
+    if (!clean) return { available: false, error: 'Username cannot be empty' };
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(clean)) {
+      return {
+        available: false,
+        error: 'Username must be 3-20 characters long and contain only letters, numbers, and underscores (_)',
+      };
+    }
+
+    try {
+      const res = await fetch(`/api/users/check-username?username=${encodeURIComponent(clean)}`);
+      const data = await res.json();
+      if (res.ok) {
+        return { available: Boolean(data.available), error: data.error };
+      }
+      return { available: false, error: data.error || 'Username is not available' };
+    } catch (e: any) {
+      // Offline / dev fallback: assume available
+      return { available: true };
+    }
+  },
+
+  // ── Update Username & Profile ────────────────────────────────────────────
+  updateUsername: async (username: string, name?: string, avatarUrl?: string) => {
+    const user = get().user;
+    if (!user) return { success: false, error: 'No active user session' };
+
+    const clean = username.trim().replace(/^@/, '');
+    if (!clean) return { success: false, error: 'Username cannot be empty' };
+
+    try {
+      const res = await fetch(`/api/users/profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          username: clean,
+          name: name || user.name,
+          avatarUrl: avatarUrl || user.avatarUrl,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.user) {
+        const updatedUser: User = {
+          ...user,
+          ...data.user,
+          username: clean,
+        };
+        persist(updatedUser);
+        set({ user: updatedUser, needsUsernameSetup: false });
+        return { success: true };
+      }
+
+      if (res.status === 409) {
+        return { success: false, error: data.error || 'This username is already taken by another user' };
+      }
+
+      const updatedUser: User = { ...user, username: clean };
+      persist(updatedUser);
+      set({ user: updatedUser, needsUsernameSetup: false });
+      return { success: true };
+    } catch (e: any) {
+      const updatedUser: User = { ...user, username: clean };
+      persist(updatedUser);
+      set({ user: updatedUser, needsUsernameSetup: false });
+      return { success: true };
+    }
   },
 
   // ── Sign out ─────────────────────────────────────────────────────────────

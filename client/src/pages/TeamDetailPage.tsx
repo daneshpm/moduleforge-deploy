@@ -32,12 +32,14 @@ import {
   FileText,
   Download,
   Share2,
+  CircleDot,
 } from 'lucide-react';
 import { useTeamStore } from '../store/useTeamStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useCommunicationStore } from '../store/useCommunicationStore';
 import { InviteMemberModal } from '../components/InviteMemberModal';
+import { TeamIssuesTab } from '../components/teams/TeamIssuesTab';
 import { Channel, ChannelType } from '../types/communication';
 
 export const TeamDetailPage: React.FC = () => {
@@ -61,7 +63,7 @@ export const TeamDetailPage: React.FC = () => {
     startDirectChat,
   } = useCommunicationStore();
 
-  const [activeTab, setActiveTab] = useState<'chat' | 'members' | 'invitations' | 'projects' | 'settings'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'issues' | 'members' | 'invitations' | 'projects' | 'settings'>('chat');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
 
@@ -497,6 +499,18 @@ export const TeamDetailPage: React.FC = () => {
         </button>
 
         <button
+          onClick={() => setActiveTab('issues')}
+          className={`pb-3 transition relative flex items-center gap-2 shrink-0 ${
+            activeTab === 'issues'
+              ? 'text-[#1F5E4B] border-b-2 border-[#1F5E4B] font-bold'
+              : 'text-[#6B7471] hover:text-[#202524]'
+          }`}
+        >
+          <CircleDot className="w-4 h-4" />
+          <span>Issues</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('members')}
           className={`pb-3 transition relative flex items-center gap-2 shrink-0 ${
             activeTab === 'members'
@@ -812,6 +826,11 @@ export const TeamDetailPage: React.FC = () => {
             )}
           </main>
         </div>
+      )}
+
+      {/* TAB: ISSUES (GitHub-Style Ticketing & Task Tracking) */}
+      {activeTab === 'issues' && (
+        <TeamIssuesTab team={activeTeam} />
       )}
 
       {/* TAB 2: MEMBERS (with direct calling & messaging per user) */}

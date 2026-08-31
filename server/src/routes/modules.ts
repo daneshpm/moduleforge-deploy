@@ -322,7 +322,21 @@ modulesRouter.post('/', async (req, res) => {
       deployedUrl,
     } = req.body;
 
-    const authorId = bodyAuthorId || (req.headers['x-user-id'] as string | undefined);
+    const rawAuthorId = bodyAuthorId || (req.headers['x-user-id'] as string | undefined);
+    let validAuthorId: string | null = null;
+    if (rawAuthorId && typeof rawAuthorId === 'string' && rawAuthorId.trim()) {
+      try {
+        const userExists = await prisma.user.findUnique({
+          where: { id: rawAuthorId.trim() },
+          select: { id: true },
+        });
+        if (userExists) {
+          validAuthorId = userExists.id;
+        }
+      } catch (err) {
+        console.warn('Error checking module author user:', err);
+      }
+    }
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Module name is required' });
@@ -367,7 +381,7 @@ modulesRouter.post('/', async (req, res) => {
       name: name.trim(),
       description: description.trim(),
       author: authorName,
-      authorId: authorId || null,
+      authorId: validAuthorId,
       categoryName,
       version: version || '1.0.0',
       technologies: technologiesJson,

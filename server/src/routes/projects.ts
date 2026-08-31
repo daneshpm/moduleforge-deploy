@@ -67,6 +67,41 @@ projectsRouter.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Project name is required' });
     }
 
+    let validUserId: string | null = null;
+    if (userId && typeof userId === 'string' && userId.trim()) {
+      let user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: userId.trim() },
+            ...(userEmail ? [{ email: userEmail }] : []),
+          ],
+        },
+      });
+
+      if (!user) {
+        try {
+          const safeEmail = userEmail || `${userId.trim()}@moduleforge.local`;
+          const baseName = userName || userId.trim().slice(0, 10);
+          user = await prisma.user.create({
+            data: {
+              id: userId.trim(),
+              email: safeEmail,
+              name: baseName,
+              username: `${baseName.toLowerCase().replace(/[^a-z0-9_]/g, '')}_${Math.floor(1000 + Math.random() * 9000)}`,
+              avatarUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(baseName)}`,
+              isDev: true,
+            },
+          });
+        } catch (err) {
+          console.warn('Could not auto-provision project user:', err);
+        }
+      }
+
+      if (user) {
+        validUserId = user.id;
+      }
+    }
+
     let parsedOwner = gitOwner;
     let parsedRepo = gitRepo;
     if (gitRepositoryUrl && (!parsedOwner || !parsedRepo)) {
@@ -83,7 +118,7 @@ projectsRouter.post('/', async (req, res) => {
       data: {
         name: name.trim(),
         description: description || '',
-        userId: userId || null,
+        userId: validUserId,
         teamId: teamId || null,
         projectType: projectType === 'team' ? 'team' : 'individual',
         visibility: visibility === 'public' ? 'public' : 'private',
@@ -105,19 +140,21 @@ projectsRouter.post('/', async (req, res) => {
       },
     });
 
-    if (userId) {
+    if (validUserId) {
       try {
         await prisma.projectMember.create({
           data: {
             projectId: project.id,
-            userId,
+            userId: validUserId,
             email: userEmail || 'developer@moduleforge.local',
             name: userName || 'Developer',
             role: 'owner',
             status: 'accepted',
           },
         });
-      } catch (_) {}
+      } catch (e) {
+        console.warn('Could not add owner to projectMember roster:', e);
+      }
     }
 
     // If team project & teamRepos array provided, auto-create & link team modules!

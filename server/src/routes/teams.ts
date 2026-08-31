@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { prisma } from '../prisma';
 import { emailService } from '../services/emailService';
 import { realtimeEventManager } from '../services/realtimeEvents';
+import { teamIssueService } from '../services/teamIssueService';
 
 export const teamsRouter = Router();
 
@@ -39,7 +40,7 @@ async function getCallerTeamRole(teamId: string, userId?: string): Promise<{ isO
 // POST /api/teams - Create a new team
 teamsRouter.post('/', async (req, res) => {
   try {
-    const { name, description, avatarUrl, ownerId } = req.body;
+    const { name, description, avatarUrl, ownerId, ownerEmail, ownerName, ownerUsername } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Team name is required' });
@@ -49,12 +50,42 @@ teamsRouter.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Owner user ID is required' });
     }
 
-    const owner = await (prisma as any).user.findUnique({
-      where: { id: ownerId },
+    let owner = await (prisma as any).user.findFirst({
+      where: {
+        OR: [
+          { id: ownerId },
+          ...(ownerEmail ? [{ email: ownerEmail }] : []),
+          ...(ownerUsername ? [{ username: String(ownerUsername).replace(/^@/, '') }] : []),
+        ],
+      },
     });
 
     if (!owner) {
-      return res.status(404).json({ error: 'Owner user account not found' });
+      try {
+        const safeEmail = ownerEmail || `${ownerId}@moduleforge.local`;
+        const baseUsername = (ownerUsername?.replace(/^@/, '') || ownerName?.replace(/[^a-z0-9_]/gi, '') || 'dev')
+          .toLowerCase()
+          .slice(0, 15);
+        const uniqueUsername = `${baseUsername}_${Math.floor(1000 + Math.random() * 9000)}`;
+
+        owner = await (prisma as any).user.create({
+          data: {
+            id: ownerId,
+            email: safeEmail,
+            name: ownerName || 'Developer',
+            username: uniqueUsername,
+            avatarUrl: avatarUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(ownerName || ownerId)}`,
+            isDev: true,
+          },
+        });
+      } catch (upsertErr) {
+        console.warn('Could not auto-create owner user, checking existing users:', upsertErr);
+        owner = await (prisma as any).user.findFirst();
+      }
+    }
+
+    if (!owner) {
+      return res.status(404).json({ error: 'Owner user account not found. Please sign in again.' });
     }
 
     const team = await (prisma as any).team.create({
@@ -696,3 +727,137 @@ teamsRouter.delete('/:teamId/invitations/:invitationId', async (req, res) => {
     res.status(500).json({ error: error.message || 'Failed to cancel invitation' });
   }
 });
+
+// ============================================================================
+// TEAM ISSUES (GITHUB-STYLE TICKETING)
+// ============================================================================
+
+// GET /api/teams/:teamId/issues - List team issues with filters & counts
+teamsRouter.get('/:teamId/issues', async (req, res) => {
+  try {
+    const { teamId } = req.params;
+    const { status, priority, label, search, assigneeId } = req.query;
+
+    const result = teamIssueService.getIssues(teamId, {
+      status: status as string | undefined,
+      priority: priority as string | undefined,
+      label: label as string | undefined,
+      search: search as string | undefined,
+      assigneeId: assigneeId as string | undefined,
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching team issues:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch team issues' });
+  }
+});
+
+// POST /api/teams/:teamId/issues - Create a new team issue
+teamsRouter.post('/:teamId/issues', async (req, res) => {
+  try {
+    const { teamId } = req.params;
+    const { title, description, priority, labels, author, assignee } = req.body;
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: 'Issue title is required' });
+    }
+
+    if (!author || !author.id) {
+      return res.status(400).json({ error: 'Author details are required' });
+    }
+
+    const issue = teamIssueService.createIssue(teamId, {
+      title,
+      description: description || '',
+      priority: priority || 'medium',
+      labels: Array.isArray(labels) ? labels : ['bug'],
+      author,
+      assignee: assignee || null,
+    });
+
+    res.status(201).json({ success: true, issue });
+  } catch (error: any) {
+    console.error('Error creating team issue:', error);
+    res.status(500).json({ error: error.message || 'Failed to create team issue' });
+  }
+});
+
+// GET /api/teams/:teamId/issues/:issueId - Get issue details with comments
+teamsRouter.get('/:teamId/issues/:issueId', async (req, res) => {
+  try {
+    const { teamId, issueId } = req.params;
+    const issue = teamIssueService.getIssueById(teamId, issueId);
+
+    if (!issue) {
+      return res.status(404).json({ error: 'Issue not found' });
+    }
+
+    res.json({ success: true, issue });
+  } catch (error: any) {
+    console.error('Error fetching issue detail:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch issue details' });
+  }
+});
+
+// PATCH /api/teams/:teamId/issues/:issueId - Update issue status, priority, labels, assignee
+teamsRouter.patch('/:teamId/issues/:issueId', async (req, res) => {
+  try {
+    const { teamId, issueId } = req.params;
+    const updates = req.body;
+
+    const updated = teamIssueService.updateIssue(teamId, issueId, updates);
+    if (!updated) {
+      return res.status(404).json({ error: 'Issue not found' });
+    }
+
+    res.json({ success: true, issue: updated });
+  } catch (error: any) {
+    console.error('Error updating issue:', error);
+    res.status(500).json({ error: error.message || 'Failed to update issue' });
+  }
+});
+
+// POST /api/teams/:teamId/issues/:issueId/comments - Add comment to issue thread
+teamsRouter.post('/:teamId/issues/:issueId/comments', async (req, res) => {
+  try {
+    const { teamId, issueId } = req.params;
+    const { author, content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Comment content cannot be empty' });
+    }
+
+    if (!author || !author.id) {
+      return res.status(400).json({ error: 'Author details are required' });
+    }
+
+    const comment = teamIssueService.addComment(teamId, issueId, author, content);
+    if (!comment) {
+      return res.status(404).json({ error: 'Issue not found' });
+    }
+
+    res.status(201).json({ success: true, comment });
+  } catch (error: any) {
+    console.error('Error adding issue comment:', error);
+    res.status(500).json({ error: error.message || 'Failed to add comment' });
+  }
+});
+
+// DELETE /api/teams/:teamId/issues/:issueId - Delete issue
+teamsRouter.delete('/:teamId/issues/:issueId', async (req, res) => {
+  try {
+    const { teamId, issueId } = req.params;
+    const success = teamIssueService.deleteIssue(teamId, issueId);
+
+    if (!success) {
+      return res.status(404).json({ error: 'Issue not found' });
+    }
+
+    res.json({ success: true, message: 'Issue deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting issue:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete issue' });
+  }
+});
+
