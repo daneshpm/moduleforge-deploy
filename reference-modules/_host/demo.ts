@@ -22,7 +22,7 @@ console.log('  ', { id: inv.id, number: inv.number, status: inv.status, totalCen
 await call('POST', `/api/invoices/${inv.id}/send`);
 
 console.log('3. host emits payment.received (as a payment gateway webhook would)');
-await events.publish('payment.received', { invoiceId: inv.id, paymentMethodId: pm.id, amountCents: inv.totalCents });
+await events.publish('payment.received', { invoiceId: inv.id, userId: 'user_1', paymentMethodId: pm.id, amountCents: inv.totalCents, currency: inv.currency });
 
 console.log('4. invoice status now');
 console.log('  ', (await call('GET', `/api/invoices/${inv.id}`)).status);

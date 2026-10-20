@@ -43,7 +43,7 @@ app.use('/api/invoices', createInvoice(host).router);   // provides.apiPrefix
 ```
 
 4. Render the UI export: `import { Invoices } from './modules/invoice/src/ui/Invoices'`.
-5. To get paid invoices, Billing (or a payment integration) publishes `payment.received` with `{ invoiceId, amountCents }` on the event bus. Optionally import `payment-method` and `notification-adapter` the same way; they cooperate through events only.
+5. To get paid invoices, Billing (or a payment integration) publishes `payment.received` with `{ invoiceId, userId, amountCents, currency }` on the event bus (`userId` must be the invoice owner and `amountCents`/`currency` are required; events missing or mismatching any of them are ignored). Optionally import `payment-method` and `notification-adapter` the same way; they cooperate through events only.
 
 ## Uploading to the marketplace
 

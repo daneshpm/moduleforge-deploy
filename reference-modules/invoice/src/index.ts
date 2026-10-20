@@ -22,12 +22,21 @@ const present = (r: Row, items?: ItemRow[]) => ({
 const wrap = (fn: (req: Request, res: Response) => Promise<unknown>): RequestHandler =>
   (req: Request, res: Response, next: NextFunction) => { fn(req, res).catch(next); };
 
-/** Consume `payment.received` (published by a payment provider / the host) and mark the invoice paid. */
-async function markPaid(host: HostServices, p: { invoiceId?: string; amountCents?: number }) {
-  if (!p?.invoiceId) return;
+/**
+ * Consume `payment.received` (published by a payment provider / the host) and mark the invoice paid.
+ * The payload must carry { invoiceId, userId (the invoice owner), amountCents (integer), currency }; anything
+ * missing, malformed, for another user, in another currency or below the invoice total is ignored.
+ */
+async function markPaid(host: HostServices, p: { invoiceId?: string; userId?: string; amountCents?: number; currency?: string }) {
+  if (!p || typeof p.invoiceId !== 'string' || !p.invoiceId) return;
+  if (typeof p.userId !== 'string' || !p.userId) return;
+  if (typeof p.currency !== 'string' || !p.currency) return;
+  if (!Number.isSafeInteger(p.amountCents) || (p.amountCents as number) < 0) return;
   const [inv] = await host.db.query<Row>('SELECT * FROM inv_invoices WHERE id = ?', [p.invoiceId]);
   if (!inv || (inv.status !== 'draft' && inv.status !== 'sent')) return;
-  if (p.amountCents !== undefined && p.amountCents < inv.total_cents) return; // partial payments not supported yet
+  if (inv.user_id !== p.userId) return; // payment must be for the invoice owner
+  if (inv.currency.toUpperCase() !== p.currency.toUpperCase()) return;
+  if ((p.amountCents as number) < inv.total_cents) return; // partial payments not supported yet
   const paidAt = new Date().toISOString();
   await host.db.exec("UPDATE inv_invoices SET status = 'paid', paid_at = ? WHERE id = ?", [paidAt, inv.id]);
   await host.events.publish('invoice.paid', {
@@ -63,13 +72,23 @@ export const createModule: CreateModule = (host) => {
     const userId: string = res.locals.user.id;
     const { customerName, items, taxPercent = 0, currency = 'USD' } = req.body;
     const t = computeTotals(items, taxPercent);
-    const [{ n }] = await host.db.query<{ n: number }>('SELECT COUNT(*) AS n FROM inv_invoices WHERE user_id = ?', [userId]);
     const id = crypto.randomUUID();
-    const number = `INV-${String(Number(n) + 1).padStart(4, '0')}`;
-    await host.db.exec(
-      'INSERT INTO inv_invoices (id,user_id,number,customer_name,currency,status,tax_percent,subtotal_cents,tax_cents,total_cents,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-      [id, userId, number, customerName.trim(), currency, 'draft', taxPercent, t.subtotalCents, t.taxCents, t.totalCents, new Date().toISOString()],
-    );
+    // (user_id, number) is UNIQUE: on a concurrent create take the next free number
+    let number = '';
+    for (let attempt = 0; ; attempt++) {
+      const [{ n }] = await host.db.query<{ n: number }>(
+        "SELECT COALESCE(MAX(CAST(SUBSTR(number, 5) AS INTEGER)), 0) AS n FROM inv_invoices WHERE user_id = ?", [userId]);
+      number = `INV-${String(Number(n) + 1).padStart(4, '0')}`;
+      try {
+        await host.db.exec(
+          'INSERT INTO inv_invoices (id,user_id,number,customer_name,currency,status,tax_percent,subtotal_cents,tax_cents,total_cents,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+          [id, userId, number, customerName.trim(), currency, 'draft', taxPercent, t.subtotalCents, t.taxCents, t.totalCents, new Date().toISOString()],
+        );
+        break;
+      } catch (e) {
+        if (attempt >= 9 || !/UNIQUE/i.test(String((e as Error)?.message))) throw e;
+      }
+    }
     for (const i of items) {
       await host.db.exec('INSERT INTO inv_items (invoice_id,description,quantity,unit_price_cents) VALUES (?,?,?,?)', [id, i.description, i.quantity, i.unitPriceCents]);
     }
