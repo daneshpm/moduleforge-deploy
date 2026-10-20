@@ -5,11 +5,12 @@ import fs from 'fs';
 import JSZip from 'jszip';
 import axios from 'axios';
 import { prisma } from '../prisma';
-import { gitService } from '../services/gitService';
+import { gitService, RepoPathError } from '../services/gitService';
+import { loadZip, ZipLimitError, ZIP_LIMITS } from '../services/zipLimits';
 import { projectRepoService } from '../services/projectRepoService';
 import semver from 'semver';
 import { validateZipBuffer, validateContractInZip, LEGACY_WARNING, ContractValidationResult } from '../validator';
-import { contractColumns } from '../services/moduleVersioning';
+import { contractColumns, findModuleByIdOrSlug } from '../services/moduleVersioning';
 import {
   FileEntry,
   extractZipFiles,
@@ -48,6 +49,12 @@ const upload = multer({
   dest: tempUploadDir,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
 });
+
+/** Unsafe user paths are 400, zip bombs are 413, everything else is a 500. */
+function fail(res: Response, e: any) {
+  const status = e instanceof RepoPathError ? 400 : e instanceof ZipLimitError ? 413 : 500;
+  res.status(status).json({ success: false, error: e?.message || 'Request failed' });
+}
 
 // Non-blocking contract/dependency warnings returned by the import flows
 async function importWarnings(
@@ -146,7 +153,7 @@ projectRepositoryRouter.get('/:projectId/repository', async (req: Request, res: 
       latestCommits: history.slice(0, 5),
     });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -289,7 +296,7 @@ projectRepositoryRouter.post('/:projectId/repository', async (req: Request, res:
       message: 'Repository created and initialized successfully.',
     });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -306,7 +313,7 @@ projectRepositoryRouter.delete('/:projectId/repository', projectOwnerOnly, async
     });
     res.json({ success: true, message: 'Repository disconnected from project.' });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -320,7 +327,7 @@ projectRepositoryRouter.get('/:projectId/repository/files', async (req: Request,
     const files = gitService.getFileTree(repoDir);
     res.json({ success: true, files });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -336,7 +343,7 @@ projectRepositoryRouter.get('/:projectId/repository/file', async (req: Request, 
     const content = gitService.readFile(repoDir, filePath);
     res.json({ success: true, path: filePath, content });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -354,7 +361,7 @@ projectRepositoryRouter.post('/:projectId/repository/file', async (req: Request,
 
     res.json({ success: true, message: `Saved ${filePath}`, gitStatus: status.gitStatus });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -399,7 +406,7 @@ projectRepositoryRouter.post('/:projectId/repository/commit', async (req: Reques
       message: 'Changes committed successfully to project repository.',
     });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -414,7 +421,7 @@ projectRepositoryRouter.get('/:projectId/repository/commits', async (req: Reques
     const history = await gitService.getHistory(repoDir, limit);
     res.json({ success: true, history });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -425,7 +432,7 @@ projectRepositoryRouter.get('/:projectId/repository/branches', async (req: Reque
     const branchInfo = await gitService.getBranches(repoDir);
     res.json({ success: true, ...branchInfo });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -441,7 +448,7 @@ projectRepositoryRouter.post('/:projectId/repository/branches', async (req: Requ
     const branchInfo = await gitService.createBranch(repoDir, branchName);
     res.json({ success: true, ...branchInfo });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -457,7 +464,7 @@ projectRepositoryRouter.post('/:projectId/repository/checkout', async (req: Requ
     const branchInfo = await gitService.switchBranch(repoDir, branchName);
     res.json({ success: true, ...branchInfo });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -471,7 +478,7 @@ projectRepositoryRouter.post('/:projectId/repository/push', async (req: Request,
     const pushRes = await gitService.push(repoDir, branch, authToken);
     res.json({ ...pushRes });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -594,7 +601,7 @@ projectRepositoryRouter.post(
       const fileBuffer = fs.readFileSync(file.path);
       const validation = await validateZipBuffer(fileBuffer);
       if (!validation.valid) {
-        return res.status(400).json({
+        return res.status(validation.status || 400).json({
           success: false,
           error: validation.error || 'Invalid ZIP file.',
         });
@@ -609,7 +616,7 @@ projectRepositoryRouter.post(
       const slug = manifest?.id || name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
       const targetDest = destinationPath || `modules/${slug}`;
 
-      const extractedFiles = await extractZipFiles(await JSZip.loadAsync(fileBuffer));
+      const extractedFiles = await extractZipFiles(await loadZip(fileBuffer));
       if (extractedFiles.length === 0) {
         return res.status(400).json({ success: false, error: 'ZIP file contains no extractable files.' });
       }
@@ -692,7 +699,7 @@ projectRepositoryRouter.post(
         installedVersion: version,
       });
     } catch (e: any) {
-      res.status(500).json({ success: false, error: e.message });
+      fail(res, e);
     } finally {
       if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
         try {
@@ -744,9 +751,11 @@ projectRepositoryRouter.post(
         headers,
         responseType: 'arraybuffer',
         timeout: 30000,
+        maxContentLength: ZIP_LIMITS.maxDownloadBytes,
+        maxBodyLength: ZIP_LIMITS.maxDownloadBytes,
       });
 
-      const zip = await JSZip.loadAsync(ghResponse.data);
+      const zip = await loadZip(ghResponse.data);
       const ghContract = await validateContractInZip(zip);
       const manifest = ghContract.valid ? ghContract.manifest : undefined;
       const version: string = manifest?.version || '1.0.0';
@@ -830,7 +839,7 @@ projectRepositoryRouter.post(
         installedVersion: version,
       });
     } catch (e: any) {
-      res.status(500).json({ success: false, error: e.message });
+      fail(res, e);
     }
   }
 );
@@ -856,9 +865,22 @@ projectRepositoryRouter.post(
         return res.status(400).json({ success: false, error: 'Module ID is required.' });
       }
 
-      const mod = await prisma.module.findFirst({ where: { OR: [{ id: moduleId }, { slug: moduleId }] } });
+      const mod = await findModuleByIdOrSlug(moduleId);
       if (!mod) {
         return res.status(404).json({ success: false, error: 'Marketplace module not found.' });
+      }
+
+      // Re-installing over an installed module would bypass the upgrade permission check, dependency
+      // resolution and local-edit conflict detection: it must go through the upgrade endpoint.
+      const alreadyInstalled = await prisma.projectModule.findFirst({ where: { projectId, moduleId: mod.id } });
+      if (alreadyInstalled) {
+        return res.status(409).json({
+          success: false,
+          error: `"${mod.name}" is already installed in this project (v${alreadyInstalled.moduleVersion || mod.version}). Use POST /api/projects/${projectId}/modules/${alreadyInstalled.id}/upgrade to change its version.`,
+          projectModuleId: alreadyInstalled.id,
+          installedVersion: alreadyInstalled.moduleVersion || null,
+          upgradeEndpoint: `/api/projects/${projectId}/modules/${alreadyInstalled.id}/upgrade`,
+        });
       }
 
       // Resolve which published version to install
@@ -991,7 +1013,7 @@ projectRepositoryRouter.post(
         pinnedRange: range || null,
       });
     } catch (e: any) {
-      res.status(500).json({ success: false, error: e.message });
+      fail(res, e);
     }
   }
 );
@@ -1030,7 +1052,7 @@ projectRepositoryRouter.get('/:projectId/updates', async (req: Request, res: Res
     });
     res.json({ success: true, projectId, updates });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 
@@ -1231,7 +1253,7 @@ projectRepositoryRouter.post('/:projectId/modules/:pmId/upgrade', async (req: Re
 
     res.json({ ...response, applied: true, commit: ingestResult.commit, projectModule: updatedPm });
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e.message });
+    fail(res, e);
   }
 });
 

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import JSZip from 'jszip';
 import semver from 'semver';
+import { ZipReader, assertZipWithinLimits, loadZip } from './zipLimits';
 
 export interface FileEntry {
   path: string;
@@ -16,6 +17,8 @@ const toPosix = (p: string) => p.split(path.sep).join('/');
 
 /** Files of a module archive, with a single wrapping top-level folder (GitHub style) stripped and unsafe paths skipped. */
 export async function extractZipFiles(zip: JSZip): Promise<Array<{ path: string; content: Buffer }>> {
+  assertZipWithinLimits(zip); // entry count / declared sizes (throws ZipLimitError)
+  const reader = new ZipReader(); // enforces per-file and total limits while inflating
   const entries = Object.keys(zip.files);
   const firstParts = new Set<string>();
   const hasRootFile = entries.some((p) => !zip.files[p].dir && !p.includes('/'));
@@ -31,7 +34,7 @@ export async function extractZipFiles(zip: JSZip): Promise<Array<{ path: string;
     let clean = rel;
     if (singleRoot && clean.startsWith(singleRoot)) clean = clean.substring(singleRoot.length);
     if (!clean || clean.includes('..') || clean.startsWith('/') || clean.startsWith('\\')) continue;
-    out.push({ path: clean, content: await entry.async('nodebuffer') });
+    out.push({ path: clean, content: await reader.read(entry) });
   }
   return out;
 }
@@ -50,7 +53,7 @@ export function hashOfMap(map: FileMap): string {
 
 /** Content hash of an archive: ignores zip metadata (timestamps, compression, wrapping folder). */
 export async function contentHashOfBuffer(buffer: Buffer): Promise<string> {
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await loadZip(buffer);
   return fingerprintFiles(await extractZipFiles(zip)).hash;
 }
 
@@ -214,5 +217,5 @@ export function archivePathFor(mod: any, versionRow?: any | null, version?: stri
 export async function loadVersionFiles(mod: any, versionRow?: any | null, version?: string): Promise<FileEntry[] | null> {
   const p = archivePathFor(mod, versionRow, version);
   if (!p) return null;
-  return extractZipFiles(await JSZip.loadAsync(fs.readFileSync(p)));
+  return extractZipFiles(await loadZip(fs.readFileSync(p)));
 }

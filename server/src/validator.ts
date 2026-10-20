@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { ZipReader, ZipLimitError, assertZipWithinLimits } from './services/zipLimits';
 import fs from 'fs';
 import path from 'path';
 import Ajv from 'ajv';
@@ -179,14 +180,17 @@ export async function validateContractInZip(zip: JSZip): Promise<ContractValidat
   if (files.length === 0) return legacyResult();
   // Prefer the shallowest module.json
   files.sort((a, b) => a.split('/').length - b.split('/').length);
-  const raw = await zip.files[files[0]].async('string');
+  const raw = await new ZipReader().readText(zip.files[files[0]]);
   return validateModuleJsonText(raw);
 }
 
 export async function validateContractInBuffer(buffer: Buffer): Promise<ContractValidationResult> {
   try {
-    return await validateContractInZip(await JSZip.loadAsync(buffer));
-  } catch {
+    const zip = await JSZip.loadAsync(buffer);
+    assertZipWithinLimits(zip);
+    return await validateContractInZip(zip);
+  } catch (e) {
+    if (e instanceof ZipLimitError) throw e; // callers answer 413
     return legacyResult();
   }
 }
@@ -202,6 +206,8 @@ export function validateContractInTree(files: Record<string, string>): ContractV
 export interface ZipValidationResult {
   valid: boolean;
   error?: string;
+  /** HTTP status the caller should use when valid is false (413 for zip limits, else 400) */
+  status?: number;
   message?: string;
   fileCount?: number;
   extractedMetadata?: {
@@ -227,6 +233,13 @@ export async function validateZipBuffer(buffer: Buffer): Promise<ZipValidationRe
       valid: false,
       error: 'Invalid or corrupted ZIP file.',
     };
+  }
+
+  try {
+    assertZipWithinLimits(zip);
+  } catch (e: any) {
+    if (e instanceof ZipLimitError) return { valid: false, error: e.message, status: 413 };
+    throw e;
   }
 
   const entries = Object.keys(zip.files);
@@ -261,7 +274,7 @@ export async function validateZipBuffer(buffer: Buffer): Promise<ZipValidationRe
   let extractedMetadata: ZipValidationResult['extractedMetadata'] = undefined;
   if (moduleJsonEntry) {
     try {
-      const rawText = await (moduleJsonEntry as JSZip.JSZipObject).async('string');
+      const rawText = await new ZipReader().readText(moduleJsonEntry as JSZip.JSZipObject);
       const parsed = JSON.parse(rawText);
       if (parsed && typeof parsed === 'object') {
         extractedMetadata = {
@@ -279,7 +292,13 @@ export async function validateZipBuffer(buffer: Buffer): Promise<ZipValidationRe
     }
   }
 
-  const contract = await validateContractInZip(zip);
+  let contract: ContractValidationResult;
+  try {
+    contract = await validateContractInZip(zip);
+  } catch (e: any) {
+    if (e instanceof ZipLimitError) return { valid: false, error: e.message, status: 413 };
+    throw e;
+  }
 
   // The zip itself stays "valid" for upload purposes; callers decide what to do with contract.errors.
   return {

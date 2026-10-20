@@ -13,7 +13,9 @@ import {
   resolveWarnings,
 } from '../services/dependencyResolver';
 import { gitService } from '../services/gitService';
-import { contractColumns, slugForPublish, slugCollisionMessage, publishVersion, PublishError } from '../services/moduleVersioning';
+import { contractColumns, slugForPublish, slugCollisionMessage, publishVersion, PublishError, findModuleByIdOrSlug } from '../services/moduleVersioning';
+import { ZipLimitError } from '../services/zipLimits';
+import { getProjectAccess } from '../middleware/access';
 import { contentHashOfBuffer } from '../services/moduleInstall';
 import {
   registerWebhook,
@@ -31,10 +33,7 @@ async function moduleOwnerOnly(req: any, res: any, next: any) {
   try {
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Authentication required' });
-    const mod = await (prisma as any).module.findFirst({
-      where: { OR: [{ id: req.params.id }, { slug: req.params.id }] },
-      select: { authorId: true },
-    });
+    const mod = await findModuleByIdOrSlug(req.params.id, { select: { authorId: true } });
     if (!mod) return res.status(404).json({ error: 'Module not found' });
     if (mod.authorId ? mod.authorId !== userId : isEnforced()) {
       return res.status(403).json({ error: 'Only the module author can do this' });
@@ -148,7 +147,12 @@ modulesRouter.get('/:id/dependency-check', async (req, res) => {
     if (!projectId) {
       return res.status(400).json({ error: 'projectId query parameter is required' });
     }
-    const mod = await prisma.module.findFirst({ where: { OR: [{ id }, { slug: id }] } });
+    // Only members of the project may probe what is installed in it
+    const callerId = getUserId(req);
+    if (!callerId) return res.status(401).json({ error: 'Authentication required' });
+    const access = await getProjectAccess(callerId, projectId);
+    if (!access.exists || !access.isMember) return res.status(404).json({ error: 'Project not found' });
+    const mod = await findModuleByIdOrSlug(id);
     if (!mod) {
       return res.status(404).json({ error: 'Module not found' });
     }
@@ -175,10 +179,7 @@ modulesRouter.get('/:idOrSlug', async (req, res) => {
   try {
     const { idOrSlug } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: {
-        OR: [{ id: idOrSlug }, { slug: idOrSlug }],
-      },
+    const module = await findModuleByIdOrSlug(idOrSlug, {
       include: {
         category: true,
         versions: { orderBy: { createdAt: 'desc' } },
@@ -210,7 +211,7 @@ modulesRouter.post('/upload', upload.single('file'), async (req, res) => {
     if (!zipValidation.valid) {
       // Unlink bad file
       fs.unlinkSync(file.path);
-      return res.status(400).json({
+      return res.status(zipValidation.status || 400).json({
         valid: false,
         error: zipValidation.error || 'Invalid or corrupted ZIP file.',
       });
@@ -473,12 +474,12 @@ modulesRouter.post('/', async (req, res) => {
     // slug == manifest id when a valid v1 manifest exists
     const { slug, forced: slugForced } = slugForPublish(contract, nameSlug);
 
-    // Ensure category exists in DB
+    // Ensure category exists in DB (a concurrent publish may create it first: ignore the unique violation)
     await prisma.category.upsert({
       where: { name: categoryName },
       update: {},
       create: { name: categoryName, slug: categoryName.toLowerCase().replace(/[^a-z0-9]/g, '-') },
-    });
+    }).catch((e: any) => { if (e?.code !== 'P2002') throw e; });
 
     const technologiesJson = JSON.stringify(Array.isArray(technologies) ? technologies : []);
     const envVarsJson = JSON.stringify(Array.isArray(envVars) ? envVars : (typeof envVars === 'string' ? envVars.split(',').map((s: string) => s.trim()).filter(Boolean) : []));
@@ -598,6 +599,11 @@ modulesRouter.post('/', async (req, res) => {
       warnings: contract.warnings,
     });
   } catch (error: any) {
+    if (error instanceof ZipLimitError) return res.status(413).json({ error: error.message });
+    // Concurrent publish of the same manifest id: the loser hits the unique constraint
+    if (error?.code === 'P2002') {
+      return res.status(409).json({ error: 'A module with this id was published at the same time. Retry as a new version with PUT /api/modules/:id.', code: 'MODULE_CONFLICT' });
+    }
     res.status(500).json({ error: error.message });
   }
 });
@@ -629,9 +635,7 @@ const updateModuleHandler = async (req: any, res: any) => {
       changelog,
     } = req.body;
 
-    const existing = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const existing = await findModuleByIdOrSlug(id);
 
     if (!existing) {
       return res.status(404).json({ error: 'Module not found' });
@@ -733,6 +737,10 @@ const updateModuleHandler = async (req: any, res: any) => {
       warnings: publish ? contract.warnings : [],
     });
   } catch (error: any) {
+    if (error instanceof ZipLimitError) return res.status(413).json({ error: error.message });
+    if (error?.code === 'P2002') {
+      return res.status(409).json({ error: 'This version was published at the same time by another request.', code: 'MODULE_CONFLICT' });
+    }
     res.status(500).json({ error: error.message });
   }
 };
@@ -744,9 +752,7 @@ modulesRouter.get('/:id/download', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -784,9 +790,7 @@ modulesRouter.delete('/:id', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -822,9 +826,7 @@ modulesRouter.post('/:id/check-sync', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -892,9 +894,7 @@ modulesRouter.post('/:id/sync', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -1036,9 +1036,7 @@ modulesRouter.get('/:id/sync-history', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -1061,9 +1059,7 @@ modulesRouter.get('/:id/webhook-status', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -1094,9 +1090,7 @@ modulesRouter.post('/:id/register-webhook', moduleOwnerOnly, async (req, res) =>
     // We pass it as overrides rather than mutating process.env (which is global and unsafe in serverless)
     const { githubToken, webhookSecret } = req.body || {};
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -1131,9 +1125,7 @@ modulesRouter.delete('/:id/webhook', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -1169,9 +1161,7 @@ modulesRouter.put('/:id/runtime-config', moduleOwnerOnly, async (req, res) => {
       envVars,
     } = req.body;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });

@@ -4,6 +4,14 @@ import { prisma } from '../prisma';
 import { ContractValidationResult } from '../validator';
 import { contentHashOfBuffer, highestVersion } from './moduleInstall';
 
+/** Resolve a module by id first, then by slug in a separate query (no OR: ids always win over slugs). */
+export async function findModuleByIdOrSlug(idOrSlug: string, extra: Record<string, any> = {}): Promise<any | null> {
+  if (typeof idOrSlug !== 'string' || !idOrSlug) return null;
+  const byId = await (prisma as any).module.findUnique({ where: { id: idOrSlug }, ...extra });
+  if (byId) return byId;
+  return (prisma as any).module.findUnique({ where: { slug: idOrSlug }, ...extra });
+}
+
 /** Thrown for publish rules (409 collisions, 400 bad input); routes turn it into an HTTP response. */
 export class PublishError extends Error {
   constructor(public status: number, message: string, public details?: any) {
