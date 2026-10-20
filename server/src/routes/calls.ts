@@ -65,7 +65,7 @@ callsRouter.post('/initiate', async (req, res) => {
 
     // Realtime notify receiver of incoming call
     try {
-      realtimeEventManager.sendToUser(receiverId, 'incoming_call', { call });
+      realtimeEventManager.broadcastToUser(receiverId, { type: 'INCOMING_CALL', call });
     } catch (_) {}
 
     res.status(201).json({
@@ -261,10 +261,10 @@ callsRouter.patch('/:callId/status', async (req, res) => {
     // Realtime broadcast call status to both participants
     try {
       if (updatedCall.callerId) {
-        realtimeEventManager.sendToUser(updatedCall.callerId, 'call_status_updated', { call: updatedCall });
+        realtimeEventManager.broadcastToUser(updatedCall.callerId, { type: 'CALL_STATUS_CHANGED', call: updatedCall });
       }
       if (updatedCall.receiverId) {
-        realtimeEventManager.sendToUser(updatedCall.receiverId, 'call_status_updated', { call: updatedCall });
+        realtimeEventManager.broadcastToUser(updatedCall.receiverId, { type: 'CALL_STATUS_CHANGED', call: updatedCall });
       }
     } catch (_) {}
 
