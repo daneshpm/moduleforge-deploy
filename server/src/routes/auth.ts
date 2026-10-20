@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
-import { isEnforced, verifyRequestToken, hasUnverifiedEmail, TokenClaims } from '../middleware/auth';
+import { isEnforced, verifyRequestToken, hasUnverifiedEmail, canRelinkByEmail, TokenClaims } from '../middleware/auth';
 
 export const authRouter = Router();
 
@@ -54,7 +54,11 @@ authRouter.post('/sync', async (req, res) => {
     if (!user) {
       user = await (prisma as any).user.findUnique({ where: { email: cleanEmail } });
       if (user && user.googleId && googleId && user.googleId !== googleId) {
-        return res.status(409).json({ error: 'This email is already linked to a different account.' });
+        // Firebase project migration: verified email + token from a configured project id => relink to the new uid.
+        if (claims && canRelinkByEmail(claims)) {
+          console.warn(`[auth] /sync relinking user ${user.id} to new uid (verified email, project ${claims.projectId})`);
+          user = await (prisma as any).user.update({ where: { id: user.id }, data: { googleId } });
+        } else return res.status(409).json({ error: 'This email is already linked to a different account.' });
       }
     }
 

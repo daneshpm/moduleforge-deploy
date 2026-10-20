@@ -19,25 +19,36 @@ function run(label, cmd, args, cwd) {
   console.log(`✓ ${label} done`);
 }
 
-// Adjust schema provider based on DATABASE_URL
+// Detect the DB provider from DATABASE_URL (never log the URL itself).
 const schemaPath = path.join(root, 'server', 'prisma', 'schema.prisma');
-if (fs.existsSync(schemaPath) && process.env.DATABASE_URL) {
-  try {
-    let schema = fs.readFileSync(schemaPath, 'utf8');
-    const isPostgres = process.env.DATABASE_URL.startsWith('postgres://') || process.env.DATABASE_URL.startsWith('postgresql://');
-    const isMysql = process.env.DATABASE_URL.startsWith('mysql://');
-    const targetProvider = isPostgres ? 'postgresql' : isMysql ? 'mysql' : 'sqlite';
-    schema = schema.replace(/provider\s*=\s*"(postgresql|sqlite|mysql)"/, `provider = "${targetProvider}"`);
-    fs.writeFileSync(schemaPath, schema, 'utf8');
-    console.log(`✓ Schema datasource provider configured as: ${targetProvider}`);
-  } catch (err) {
-    console.warn('Could not auto-configure schema provider:', err.message);
+console.log(`VERCEL_ENV=${process.env.VERCEL_ENV || '(unset)'}`);
+if (process.env.DATABASE_URL) {
+  const url = process.env.DATABASE_URL;
+  const isPostgres = url.startsWith('postgres://') || url.startsWith('postgresql://');
+  const isMysql = url.startsWith('mysql://');
+  const targetProvider = isPostgres ? 'postgresql' : isMysql ? 'mysql' : 'sqlite';
+  const hostType = targetProvider === 'sqlite' ? 'local file' : 'remote server';
+  console.log(`DB provider: ${targetProvider} (${hostType})`);
+  if (fs.existsSync(schemaPath)) {
+    const schema = fs.readFileSync(schemaPath, 'utf8');
+    const m = /provider\s*=\s*"(postgresql|sqlite|mysql)"/.exec(schema);
+    if (m && m[1] === targetProvider) {
+      console.log(`✓ schema.prisma provider already "${targetProvider}" (no change)`);
+    } else if (m) {
+      // Only rewrite when the provider actually differs.
+      fs.writeFileSync(schemaPath, schema.replace(m[0], `provider = "${targetProvider}"`), 'utf8');
+      console.log(`✓ schema.prisma provider switched "${m[1]}" -> "${targetProvider}"`);
+    } else {
+      console.error('✗ Could not find a datasource provider in schema.prisma');
+      process.exit(1);
+    }
   }
+} else {
+  console.log('DB provider: (DATABASE_URL not set)');
 }
 
 // Step 1 — generate Prisma client
 try {
-
   run(
     'prisma generate',
     node,
@@ -52,7 +63,8 @@ try {
   console.warn('prisma generate warning (proceeding if already generated):', e.message);
 }
 
-// Step 2 — push schema to database (creates all tables if they don't exist)
+// Step 2 — push schema to database. NO --accept-data-loss: if Prisma would drop data or the push
+// fails for any reason, the build FAILS so we never deploy code against a mismatched schema.
 if (process.env.DATABASE_URL) {
   try {
     run(
@@ -62,13 +74,14 @@ if (process.env.DATABASE_URL) {
         path.join(root, 'node_modules', 'prisma', 'build', 'index.js'),
         'db', 'push',
         '--schema', path.join(root, 'server', 'prisma', 'schema.prisma'),
-        '--accept-data-loss',
         '--skip-generate',
       ],
       root
     );
   } catch (e) {
-    console.warn('prisma db push warning:', e.message);
+    console.error('\n✗ prisma db push FAILED — aborting build (schema would not match the code).');
+    console.error('  If this is a destructive change, migrate the database deliberately; do not deploy.');
+    process.exit(1);
   }
 } else {
   console.log('\n⚠ DATABASE_URL not set — skipping prisma db push');

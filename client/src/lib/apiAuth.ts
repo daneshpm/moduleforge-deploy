@@ -12,6 +12,7 @@
 import axios from 'axios';
 import { onIdTokenChanged } from 'firebase/auth';
 import { firebaseAuth } from '../firebase';
+import { useAuthStore } from '../store/useAuthStore';
 
 let cachedToken: string | null = null;
 let installed = false;
@@ -44,6 +45,13 @@ function legacyUserId(): string | null {
   }
 }
 
+/** Central handling: a 403 {code:'EMAIL_NOT_VERIFIED'} switches the app to the Verify-your-email screen. */
+function reportIfEmailUnverified(status: number, body: any) {
+  if (status === 403 && body && body.code === 'EMAIL_NOT_VERIFIED') {
+    useAuthStore.getState().markEmailUnverified();
+  }
+}
+
 export function installApiAuth() {
   if (installed || typeof window === 'undefined') return;
   installed = true;
@@ -65,6 +73,13 @@ export function installApiAuth() {
     }
     return config;
   });
+  axios.interceptors.response.use(
+    (res) => res,
+    (err) => {
+      reportIfEmailUnverified(err?.response?.status, err?.response?.data);
+      return Promise.reject(err);
+    }
+  );
 
   // fetch
   const origFetch = window.fetch.bind(window);
@@ -76,7 +91,11 @@ export function installApiAuth() {
     if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
     const uid = legacyUserId();
     if (uid && !headers.has('x-user-id')) headers.set('x-user-id', uid);
-    return origFetch(input, { ...init, headers });
+    const res = await origFetch(input, { ...init, headers });
+    if (res.status === 403) {
+      res.clone().json().then((b) => reportIfEmailUnverified(res.status, b)).catch(() => {});
+    }
+    return res;
   };
 
   // EventSource (SSE) cannot set headers; server accepts access_token for /stream and /events only.

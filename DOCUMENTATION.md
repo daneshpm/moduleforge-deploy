@@ -565,6 +565,31 @@ realtimeEventManager.broadcastToProject() → SSE to all team members
 | `VITE_SUPABASE_URL` | Prod Auth | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Prod Auth | Supabase anon/public key |
 | `VITE_API_URL` | No | API base URL (leave blank for same-origin) |
+| `VITE_FIREBASE_API_KEY` | Prod | Firebase web API key |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Prod | e.g. `<project>.firebaseapp.com` |
+| `VITE_FIREBASE_PROJECT_ID` | Prod | Must be one of the ids in the server's `FIREBASE_PROJECT_ID` |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Prod | Firebase storage bucket |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Prod | Firebase messaging sender id |
+| `VITE_FIREBASE_APP_ID` | Prod | Firebase web app id |
+
+### Deployment notes (Vercel)
+
+**Server environment variables** (exactly these; see `server/.env.example`):
+
+| Variable | Notes |
+|----------|-------|
+| `NODE_ENV` | `production` on Vercel (fail-closed defaults). Only `development` enables dev routes and wildcard CORS. |
+| `DATABASE_URL` | Connection string. The build runs `prisma db push` **without** `--accept-data-loss` and **fails the build** if the push fails or would lose data, so code is never deployed against a mismatched schema. The build only rewrites `schema.prisma` when the provider implied by `DATABASE_URL` differs from the file, and logs the provider and `VERCEL_ENV` (never the URL). Check `VERCEL_ENV=preview` is not pointing at the production database. |
+| `FIREBASE_PROJECT_ID` | Firebase project id used to verify ID tokens. Accepts a **comma-separated list** (`modulefodge,modulefodge-a14fa`): a token's audience/issuer must match one of them, so projects can be migrated without downtime. Missing in production: a loud startup error is logged and every authenticated request is rejected with 401. On audience/issuer mismatch the server returns 401 and logs the token's `aud` (public) next to the configured ids. |
+| `ENFORCE_AUTH` | Default in production is enforced (leave unset). `false` is an explicit, loudly-logged opt-out. |
+| `ALLOWED_ORIGINS` | Comma-separated extra browser origins allowed by CORS. Same-origin requests (Origin host equals the request Host, or `https://$VERCEL_URL` / `https://$VERCEL_BRANCH_URL`) are always allowed. There is no `*.vercel.app` wildcard. |
+| `GITHUB_WEBHOOK_SECRET` | Required for `/api/webhooks` (HMAC); unsigned webhooks are rejected. |
+
+**Client build variables** (set in Vercel project settings, Production and Preview): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID` (see `client/.env.example`). Vite only exposes variables prefixed with `VITE_` to the browser bundle; anything else (e.g. `FIREBASE_API_KEY`) is silently dropped. `client/src/firebase.ts` currently has hardcoded fallback config for project `modulefodge`; it is intentionally kept so existing production keeps working, but a build-time warning (vite config) and a runtime `console.warn` are emitted whenever a fallback is used.
+
+**Email verification.** Firebase email/password users must verify their email: the API answers `403 {"code":"EMAIL_NOT_VERIFIED"}` and the client shows a "Verify your email" screen (resend with cooldown, "I've verified" re-sync, sign out). Google sign-in is unaffected.
+
+**Migrating Firebase projects (uid change).** Switching the client from `modulefodge` to `modulefodge-a14fa` changes every user's uid. List both ids in `FIREBASE_PROJECT_ID` during the migration. When a token has a **verified** email and its project id is one of the configured ids, `/api/auth/sync` (and authenticated routes) re-point the existing user row matched by email to the new uid (same user id and data) instead of returning 409. An unverified email never relinks, and a token from a project not in the list never relinks (409). Remove the old id once all clients have moved.
 
 ---
 

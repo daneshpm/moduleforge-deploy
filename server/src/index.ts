@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { modulesRouter } from './routes/modules';
@@ -16,6 +15,7 @@ import { directChatsRouter } from './routes/directChats';
 import { callsRouter } from './routes/calls';
 import { meetingsRouter } from './routes/meetings';
 import { presenceRouter } from './routes/presence';
+import { buildCors, getAllowedOrigins } from './cors';
 import { authenticate, authenticateUnlessGet, logAuthStartupWarnings } from './middleware/auth';
 
 dotenv.config();
@@ -27,28 +27,14 @@ const PORT = process.env.PORT || 5000;
 const isDev = process.env.NODE_ENV === 'development';
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
-// In production only the origins listed in ALLOWED_ORIGINS are allowed (no wildcard,
-// no *.vercel.app). Requests with no Origin header (curl, same-origin, webhooks) pass.
+// In production only ALLOWED_ORIGINS plus same-origin requests (Origin host == Host, or VERCEL_URL /
+// VERCEL_BRANCH_URL) are allowed (no wildcard, no *.vercel.app). Requests with no Origin header (curl, same-origin, webhooks) pass.
 // In development allow any origin so the Vite dev server can reach the API.
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
-  : [];
-if (!isDev && allowedOrigins.length === 0) {
-  console.warn('WARNING: ALLOWED_ORIGINS is not set (non-development); all cross-origin browser requests will be rejected.');
+if (!isDev && getAllowedOrigins().length === 0) {
+  console.warn('WARNING: ALLOWED_ORIGINS is not set (non-development); only same-origin (Origin host == Host / VERCEL_URL) browser requests will be accepted.');
 }
 
-app.use(
-  cors({
-    origin: isDev
-      ? true
-      : (origin, callback) => {
-          if (!origin) return callback(null, true);
-          if (allowedOrigins.includes(origin)) return callback(null, true);
-          callback(null, false);
-        },
-    credentials: true,
-  })
-);
+app.use(buildCors(isDev));
 
 // ── Body parsers ──────────────────────────────────────────────────────────────
 app.use(
