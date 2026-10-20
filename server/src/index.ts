@@ -23,7 +23,8 @@ logAuthStartupWarnings();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const isDev = process.env.NODE_ENV !== 'production';
+// Explicit opt-in only: an unset/unknown NODE_ENV must NOT enable dev routes or wildcard CORS.
+const isDev = process.env.NODE_ENV === 'development';
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
 // In production only the origins listed in ALLOWED_ORIGINS are allowed (no wildcard,
@@ -33,7 +34,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
   : [];
 if (!isDev && allowedOrigins.length === 0) {
-  console.warn('WARNING: ALLOWED_ORIGINS is not set in production; all cross-origin browser requests will be rejected.');
+  console.warn('WARNING: ALLOWED_ORIGINS is not set (non-development); all cross-origin browser requests will be rejected.');
 }
 
 app.use(

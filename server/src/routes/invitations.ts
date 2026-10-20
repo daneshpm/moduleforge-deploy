@@ -16,14 +16,9 @@ invitationsRouter.get('/:token', async (req, res) => {
 
     const cleanToken = token.trim();
 
-    // 1. Try Team Invitation by token OR by id
-    const invitation = await (prisma as any).teamInvitation.findFirst({
-      where: {
-        OR: [
-          { token: cleanToken },
-          { id: cleanToken },
-        ],
-      },
+    // 1. Try Team Invitation by its secret token ONLY (never by guessable id)
+    const invitation = await (prisma as any).teamInvitation.findUnique({
+      where: { token: cleanToken },
       include: {
         team: {
           include: {
@@ -43,14 +38,9 @@ invitationsRouter.get('/:token', async (req, res) => {
     });
 
     if (!invitation) {
-      // 2. Try Project Member Invitation by inviteToken OR by id
-      const projectMember = await prisma.projectMember.findFirst({
-        where: {
-          OR: [
-            { inviteToken: cleanToken },
-            { id: cleanToken },
-          ],
-        },
+      // 2. Try Project Member Invitation by its secret inviteToken ONLY
+      const projectMember = await prisma.projectMember.findUnique({
+        where: { inviteToken: cleanToken },
         include: {
           project: {
             include: {
@@ -78,14 +68,9 @@ invitationsRouter.get('/:token', async (req, res) => {
         });
       }
 
-      // 3. Try Project Join Code or Project ID
-      const project = await prisma.project.findFirst({
-        where: {
-          OR: [
-            { joinCode: cleanToken.toUpperCase() },
-            { id: cleanToken },
-          ],
-        },
+      // 3. Try Project Join Code (never the project id)
+      const project = await prisma.project.findUnique({
+        where: { joinCode: cleanToken.toUpperCase() },
         include: {
           user: { select: { id: true, name: true, username: true } },
           modules: { include: { module: true } },
@@ -178,13 +163,8 @@ invitationsRouter.post('/:token/accept', authenticate, async (req, res) => {
       });
     }
 
-    const invitation = await (prisma as any).teamInvitation.findFirst({
-      where: {
-        OR: [
-          { token: cleanToken },
-          { id: cleanToken },
-        ],
-      },
+    const invitation = await (prisma as any).teamInvitation.findUnique({
+      where: { token: cleanToken },
       include: {
         team: true,
         inviter: true,
@@ -192,25 +172,34 @@ invitationsRouter.post('/:token/accept', authenticate, async (req, res) => {
     });
 
     if (!invitation) {
-      const projectMember = await prisma.projectMember.findFirst({
-        where: {
-          OR: [
-            { inviteToken: cleanToken },
-            { id: cleanToken },
-          ],
-        },
+      const projectMember = await prisma.projectMember.findUnique({
+        where: { inviteToken: cleanToken },
         include: { project: true },
       });
 
       if (projectMember) {
-        await prisma.projectMember.update({
-          where: { id: projectMember.id },
-          data: {
-            status: 'accepted',
-            acceptedAt: new Date(),
-            userId: user.id,
-          },
-        });
+        const userEmail = String(user.email || '').toLowerCase().trim();
+        // The secret token is bound to its invitee: email and (if already linked) user id must match.
+        if (projectMember.email && projectMember.email.toLowerCase().trim() !== userEmail) {
+          return res.status(403).json({ error: 'This invitation was addressed to a different email address.' });
+        }
+        if (projectMember.userId && projectMember.userId !== user.id) {
+          return res.status(403).json({ error: 'This invitation was addressed to a different user.' });
+        }
+        // Never touch an owner row, and never resurrect a rejected membership.
+        if (projectMember.role === 'owner' || projectMember.status === 'rejected') {
+          return res.status(403).json({ error: 'This invitation can no longer be accepted.' });
+        }
+        if (projectMember.status !== 'accepted') {
+          await prisma.projectMember.update({
+            where: { id: projectMember.id },
+            data: {
+              status: 'accepted',
+              acceptedAt: new Date(),
+              userId: user.id,
+            },
+          });
+        }
 
         const displayName = user.name || user.username || user.email;
         try {
@@ -232,41 +221,47 @@ invitationsRouter.post('/:token/accept', authenticate, async (req, res) => {
         });
       }
 
-      // Check project join code
-      const project = await prisma.project.findFirst({
-        where: {
-          OR: [
-            { joinCode: cleanToken.toUpperCase() },
-            { id: cleanToken },
-          ],
-        },
-      });
+      // Project join code (never the project id). Like /projects/join-by-code this only creates a
+      // PENDING request that the project owner must approve.
+      const project = await prisma.project.findUnique({ where: { joinCode: cleanToken.toUpperCase() } });
 
       if (project) {
-        await prisma.projectMember.upsert({
-          where: { id: `${project.id}-${user.id}` },
-          update: {
-            status: 'accepted',
-            userId: user.id,
-            role: 'developer',
-          },
-          create: {
-            id: `${project.id}-${user.id}`,
-            projectId: project.id,
-            userId: user.id,
-            email: user.email,
-            name: user.name || user.username,
-            role: 'developer',
-            status: 'accepted',
-            acceptedAt: new Date(),
-          },
+        const userEmail = String(user.email || '').toLowerCase().trim();
+        const existing = await prisma.projectMember.findFirst({
+          where: { projectId: project.id, OR: [{ userId: user.id }, { email: userEmail }] },
         });
+        if (project.userId === user.id || (existing && (existing.role === 'owner' || existing.status === 'accepted'))) {
+          return res.json({
+            success: true,
+            isProject: true,
+            status: 'accepted',
+            projectId: project.id,
+            message: `You are already a member of ${project.name}`,
+          });
+        }
+        if (existing) {
+          if (existing.status !== 'pending') {
+            await prisma.projectMember.update({ where: { id: existing.id }, data: { status: 'pending', invitedAt: new Date() } });
+          }
+        } else {
+          await prisma.projectMember.create({
+            data: {
+              projectId: project.id,
+              userId: user.id,
+              email: userEmail,
+              name: user.name || user.username,
+              role: 'developer',
+              status: 'pending',
+            },
+          });
+        }
 
         return res.json({
           success: true,
           isProject: true,
+          status: 'pending',
           projectId: project.id,
-          message: `Successfully joined project ${project.name}`,
+          message: 'Join request submitted! Waiting for project owner approval.',
         });
       }
 
@@ -281,14 +276,19 @@ invitationsRouter.post('/:token/accept', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'This invitation has expired. Please ask the team administrator for a new invite.' });
     }
 
-    // If invited by direct user ID, ensure the recipient matches
+    // The token is bound to its invitee: direct user id and/or invitee email must match the caller.
     if (invitation.inviteeUserId && invitation.inviteeUserId !== user.id) {
       const targetUser = await (prisma as any).user.findUnique({ where: { id: invitation.inviteeUserId } });
-      if (targetUser && targetUser.email !== user.email) {
+      if (!targetUser || String(targetUser.email).toLowerCase() !== String(user.email).toLowerCase()) {
         return res.status(403).json({
-          error: `This invitation was addressed specifically to @${targetUser.username || targetUser.name}.`,
+          error: targetUser
+            ? `This invitation was addressed specifically to @${targetUser.username || targetUser.name}.`
+            : 'This invitation was addressed to a different user.',
         });
       }
+    }
+    if (invitation.inviteeEmail && invitation.inviteeEmail.toLowerCase().trim() !== String(user.email).toLowerCase().trim()) {
+      return res.status(403).json({ error: 'This invitation was addressed to a different email address.' });
     }
 
     // Add user as team member (upsert to avoid duplicates)
@@ -299,9 +299,8 @@ invitationsRouter.post('/:token/accept', authenticate, async (req, res) => {
           userId: user.id,
         },
       },
-      update: {
-        role: invitation.role || 'member',
-      },
+      // Never change the role of an existing member (e.g. downgrade an owner/admin).
+      update: {},
       create: {
         teamId: invitation.teamId,
         userId: user.id,

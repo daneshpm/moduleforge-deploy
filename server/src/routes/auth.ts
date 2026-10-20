@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
-import { isEnforced, verifyRequestToken, TokenClaims } from '../middleware/auth';
+import { isEnforced, verifyRequestToken, hasUnverifiedEmail, TokenClaims } from '../middleware/auth';
 
 export const authRouter = Router();
 
@@ -28,6 +28,9 @@ authRouter.post('/sync', async (req, res) => {
   }
   if (claims) {
     if (!claims.email) return res.status(400).json({ error: 'Token has no email' });
+    if (hasUnverifiedEmail(claims)) {
+      return res.status(403).json({ error: 'Email address is not verified. Verify your email and sign in again.', code: 'EMAIL_NOT_VERIFIED' });
+    }
     email = claims.email;
     googleId = claims.uid;
     name = name || claims.name;
@@ -36,7 +39,7 @@ authRouter.post('/sync', async (req, res) => {
     console.warn('[auth] /sync trusting request body identity (ENFORCE_AUTH off)');
   }
   // Never let a client self-declare dev accounts in production.
-  if (process.env.NODE_ENV === 'production') isDev = false;
+  if (process.env.NODE_ENV !== 'development') isDev = false;
 
   if (!email) {
     return res.status(400).json({ error: 'Email is required' });
@@ -45,22 +48,22 @@ authRouter.post('/sync', async (req, res) => {
   const cleanEmail = email.toLowerCase().trim();
 
   try {
-    // Check if user already exists by email or googleId
-    let user = await (prisma as any).user.findFirst({
-      where: {
-        OR: [
-          { email: cleanEmail },
-          googleId ? { googleId } : undefined,
-        ].filter(Boolean),
-      },
-    });
+    // Resolve by googleId first; fall back to email (claims are verified above). Never take over a
+    // row that is already bound to a different googleId.
+    let user = googleId ? await (prisma as any).user.findUnique({ where: { googleId } }) : null;
+    if (!user) {
+      user = await (prisma as any).user.findUnique({ where: { email: cleanEmail } });
+      if (user && user.googleId && googleId && user.googleId !== googleId) {
+        return res.status(409).json({ error: 'This email is already linked to a different account.' });
+      }
+    }
 
     if (user) {
       // Update existing user's latest details
       user = await (prisma as any).user.update({
         where: { id: user.id },
         data: {
-          googleId: googleId || user.googleId,
+          googleId: user.googleId || googleId || null,
           name: name || user.name,
           avatarUrl: avatarUrl || user.avatarUrl,
           lastLogin: new Date(),
@@ -110,7 +113,7 @@ authRouter.post('/sync', async (req, res) => {
 // POST /api/auth/google-dev - Quick development Google Sign-In Simulation
 authRouter.post('/google-dev', async (req, res) => {
   // Development-only: lets anyone sign in as any email, so it must never exist in production.
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV !== 'development') {
     return res.status(404).json({ error: 'API endpoint not found' });
   }
   const { email = 'shalya@example.com', name = 'Shalya Gaonkar', avatarUrl } = req.body || {};

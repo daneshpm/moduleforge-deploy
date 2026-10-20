@@ -544,7 +544,9 @@ realtimeEventManager.broadcastToProject() → SSE to all team members
 | Variable | Required | Description |
 |----------|:--------:|-------------|
 | `PORT` | No | Server port (default: 5000) |
-| `NODE_ENV` | No | `development` or `production` |
+| `NODE_ENV` | **Yes (prod)** | Set `development` explicitly for local dev: only then are `/api/auth/google-dev`, `/api/runner`, `/api/git` and wildcard CORS enabled. Any other value (including unset) is treated as non-development. |
+| `ENFORCE_AUTH` | No | `NODE_ENV=production` enforces Firebase ID tokens by default (fails closed); set `ENFORCE_AUTH=false` only to opt out explicitly (loud startup warning). Outside production the default is off (legacy `x-user-id` mode) unless `ENFORCE_AUTH=true`. Sessions whose Firebase email is not verified are rejected (403). |
+| `FIREBASE_PROJECT_ID` | With auth | Firebase project used to verify ID tokens |
 | `DATABASE_URL` | **Yes** | PostgreSQL connection string (or SQLite `file:./dev.db` for local) |
 | `ALLOWED_ORIGINS` | Prod | Comma-separated allowed CORS origins |
 | `GITHUB_TOKEN` | Webhooks | GitHub PAT with `repo` scope |

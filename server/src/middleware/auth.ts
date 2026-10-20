@@ -31,7 +31,10 @@ let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 /** Evaluated lazily so tests / runtime env changes are respected. */
 export function isEnforced(): boolean {
-  return process.env.ENFORCE_AUTH === 'true';
+  const v = process.env.ENFORCE_AUTH;
+  // Fail closed: in production auth is enforced unless explicitly disabled with ENFORCE_AUTH=false.
+  if (process.env.NODE_ENV === 'production') return v !== 'false';
+  return v === 'true';
 }
 
 export type TokenVerifier = (token: string) => Promise<TokenClaims>;
@@ -90,10 +93,26 @@ function legacyUserId(req: Request): string | undefined {
   return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
 }
 
-async function findUserForClaims(c: TokenClaims) {
-  const or: any[] = [{ googleId: c.uid }];
-  if (c.email) or.push({ email: c.email.toLowerCase().trim() });
-  return (prisma as any).user.findFirst({ where: { OR: or }, select: { id: true, email: true } });
+/**
+ * Resolve the account for token claims: googleId (uid) first; otherwise link-by-email is only
+ * honoured for a VERIFIED email and only when the row has no googleId yet (or the same one).
+ */
+export async function findUserForClaims(c: TokenClaims) {
+  const byUid = await (prisma as any).user.findUnique({ where: { googleId: c.uid }, select: { id: true, email: true } });
+  if (byUid) return byUid;
+  if (c.email && c.emailVerified === true) {
+    const byEmail = await (prisma as any).user.findUnique({
+      where: { email: c.email.toLowerCase().trim() },
+      select: { id: true, email: true, googleId: true },
+    });
+    if (byEmail && (!byEmail.googleId || byEmail.googleId === c.uid)) return { id: byEmail.id, email: byEmail.email };
+  }
+  return null;
+}
+
+/** A token carrying an email that the identity provider has not verified must not be trusted. */
+export function hasUnverifiedEmail(c: TokenClaims): boolean {
+  return !!c.email && c.emailVerified !== true;
 }
 
 /**
@@ -111,6 +130,10 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     } catch (e: any) {
       if (enforced) return res.status(401).json({ error: 'Invalid or expired token' });
       console.warn(`[auth] invalid token ignored (ENFORCE_AUTH off): ${e?.message}`);
+    }
+
+    if (claims && hasUnverifiedEmail(claims)) {
+      return res.status(403).json({ error: 'Email address is not verified. Verify your email and sign in again.', code: 'EMAIL_NOT_VERIFIED' });
     }
 
     if (claims) {
@@ -144,7 +167,9 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   try {
     const claims = await verifyRequestToken(req).catch(() => null);
-    if (claims) {
+    if (claims && hasUnverifiedEmail(claims)) {
+      /* unverified identity: treated as anonymous */
+    } else if (claims) {
       const user = await findUserForClaims(claims);
       if (user) req.user = { id: user.id, email: user.email };
     } else if (!isEnforced()) {
@@ -180,7 +205,7 @@ export function requireUserId(req: Request, res: Response): string | null {
 
 export function logAuthStartupWarnings() {
   if (process.env.NODE_ENV === 'production' && !isEnforced()) {
-    console.warn('!!!!!! SECURITY WARNING: ENFORCE_AUTH is not "true" in production. The API trusts client-supplied user ids (x-user-id / userId). Set ENFORCE_AUTH=true and FIREBASE_PROJECT_ID. !!!!!!');
+    console.warn('!!!!!! SECURITY WARNING: ENFORCE_AUTH=false in production. The API trusts client-supplied user ids (x-user-id / userId). Remove ENFORCE_AUTH=false and set FIREBASE_PROJECT_ID. !!!!!!');
   }
   if (isEnforced() && !process.env.FIREBASE_PROJECT_ID) {
     console.error('!!!!!! ENFORCE_AUTH=true but FIREBASE_PROJECT_ID is not set: every request will be rejected. !!!!!!');

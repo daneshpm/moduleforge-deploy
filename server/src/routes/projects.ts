@@ -12,7 +12,7 @@ import { gitService } from '../services/gitService';
 import { projectRepoService } from '../services/projectRepoService';
 import { projectRepositoryRouter } from './projectRepository';
 import { getUserId, isEnforced } from '../middleware/auth';
-import { projectMemberParam, projectOwnerOnly } from '../middleware/access';
+import { projectMemberParam, projectOwnerOnly, getProjectAccess } from '../middleware/access';
 
 export const projectsRouter = Router();
 
@@ -1858,6 +1858,19 @@ projectsRouter.post('/invites/accept', async (req, res) => {
       return res.status(404).json({ error: 'Invalid or expired invitation link' });
     }
 
+    // The secret token is bound to its invitee; never touch owner rows or resurrect rejected ones
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+    const accepter = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+    if (!accepter || accepter.email.toLowerCase().trim() !== member.email.toLowerCase().trim()) {
+      return res.status(403).json({ error: 'This invitation was addressed to a different email address.' });
+    }
+    if (member.userId && member.userId !== userId) {
+      return res.status(403).json({ error: 'This invitation was addressed to a different user.' });
+    }
+    if (member.role === 'owner' || member.status === 'rejected') {
+      return res.status(403).json({ error: 'This invitation can no longer be accepted.' });
+    }
+
     // Update member status to accepted
     const updatedMember = await prisma.projectMember.update({
       where: { id: member.id },
@@ -1906,13 +1919,8 @@ projectsRouter.get('/by-code/:code', async (req, res) => {
     const { code } = req.params;
     const cleanCode = code.trim().toUpperCase();
 
-    const project = await prisma.project.findFirst({
-      where: {
-        OR: [
-          { joinCode: cleanCode },
-          { id: code }
-        ]
-      },
+    const project = await prisma.project.findUnique({
+      where: { joinCode: cleanCode },
       include: {
         user: true,
         modules: { include: { module: true } },
@@ -1944,7 +1952,9 @@ projectsRouter.get('/by-code/:code', async (req, res) => {
 // POST /api/projects/join-by-code - Request to Join Team Project (Requires Owner Approval)
 projectsRouter.post('/join-by-code', async (req, res) => {
   try {
-    const { code, name, email, role = 'developer' } = req.body;
+    const { code, name, email } = req.body;
+    // Self-service join requests can never ask for more than developer/viewer.
+    const role = req.body.role === 'viewer' ? 'viewer' : 'developer';
     if (!code || !email) {
       return res.status(400).json({ error: 'Join code and email are required' });
     }
@@ -1953,13 +1963,8 @@ projectsRouter.post('/join-by-code', async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name ? name.trim() : cleanEmail.split('@')[0];
 
-    const project = await prisma.project.findFirst({
-      where: {
-        OR: [
-          { joinCode: cleanCode },
-          { id: code }
-        ]
-      },
+    const project = await prisma.project.findUnique({
+      where: { joinCode: cleanCode },
       include: { user: true }
     });
 
@@ -2058,8 +2063,17 @@ projectsRouter.get('/:id/members/status', async (req, res) => {
       return res.status(400).json({ error: 'Email parameter is required' });
     }
 
+    // A prospective member may only poll their own status; otherwise the caller must be a project member.
+    const callerId = getUserId(req);
+    if (!callerId) return res.status(401).json({ error: 'Authentication required' });
+    const caller = await prisma.user.findUnique({ where: { id: callerId }, select: { email: true } });
+    const isSelf = !!caller?.email && caller.email.toLowerCase().trim() === email.toLowerCase().trim();
+    if (!isSelf && !(await getProjectAccess(callerId, id)).isMember) {
+      return res.status(404).json({ error: 'No join request found for this email' });
+    }
+
     const member = await prisma.projectMember.findFirst({
-      where: { projectId: id, email: email.toLowerCase() }
+      where: { projectId: id, email: email.toLowerCase().trim() }
     });
 
     if (!member) {

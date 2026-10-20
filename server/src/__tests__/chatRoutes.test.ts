@@ -40,7 +40,7 @@ before(async () => {
   require('../middleware/auth').setTokenVerifier(async (t: string) => {
     if (!t.startsWith('tok-')) throw new Error('bad token');
     const uid = t.slice(4);
-    return { uid, email: `${uid}@example.com` };
+    return { uid, email: `${uid}@example.com`, emailVerified: true };
   });
 
   const mk = (k: string) => prisma.user.create({ data: { email: `${k}@example.com`, googleId: k, username: `user${k}`, name: k.toUpperCase() } });

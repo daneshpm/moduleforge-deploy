@@ -46,7 +46,7 @@ async function guard(req: Request, res: Response, next: NextFunction, projectId:
     const userId = getUserId(req);
     if (!userId) {
       if (isEnforced()) return res.status(401).json({ error: 'Authentication required' });
-      return next(); // legacy mode, anonymous: behaves as before
+      return next(); // legacy (dev-only) mode, anonymous: behaves as before
     }
     const access = await getProjectAccess(userId, projectId);
     if (!access.exists) return res.status(404).json({ error: 'Project not found' });

@@ -44,7 +44,7 @@ before(async () => {
   setTokenVerifier(async (t: string) => {
     if (!t.startsWith('tok-')) throw new Error('bad token');
     const uid = t.slice(4);
-    return { uid, email: `${uid}@example.com` };
+    return { uid, email: `${uid}@example.com`, emailVerified: true };
   });
 
   A = await prisma.user.create({ data: { email: 'a@example.com', googleId: 'a', username: 'usera', name: 'A' } });
@@ -124,7 +124,7 @@ test('POST /api/auth/google-dev returns 404 in production mode', async () => {
   }
 });
 
-test('legacy mode (ENFORCE_AUTH off) still works via x-user-id', async () => {
+test('legacy mode (explicit ENFORCE_AUTH=false, non-production) still works via x-user-id', async () => {
   process.env.ENFORCE_AUTH = 'false';
   try {
     const r = await call('GET', '/api/teams', { headers: { 'x-user-id': B.id } });
