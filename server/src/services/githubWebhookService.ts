@@ -80,7 +80,10 @@ export async function registerWebhook(
   const repo = module.githubRepo;
   const webhookUrl = getWebhookUrl();
   const tokenOverride = overrides?.githubToken;
-  const secret = overrides?.webhookSecret || process.env.GITHUB_WEBHOOK_SECRET || 'moduleforge_webhook_secret';
+  const secret = process.env.GITHUB_WEBHOOK_SECRET; // per-request overrides are ignored: the receiver only knows the server secret
+  if (!secret) {
+    return { success: false, error: 'GITHUB_WEBHOOK_SECRET is not configured on the server' };
+  }
 
   try {
     // Check for an existing ModuleForge webhook on this repo to avoid duplicates

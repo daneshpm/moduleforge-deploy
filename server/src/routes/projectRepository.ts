@@ -9,7 +9,10 @@ import { gitService } from '../services/gitService';
 import { projectRepoService } from '../services/projectRepoService';
 import { validateZipBuffer } from '../validator';
 
+import { projectMemberParam, projectOwnerOnly } from '../middleware/access';
+
 export const projectRepositoryRouter = Router();
+projectRepositoryRouter.param('projectId', projectMemberParam);
 
 const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
 const tempUploadDir = isVercel
@@ -245,7 +248,7 @@ projectRepositoryRouter.post('/:projectId/repository', async (req: Request, res:
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. DELETE / DISCONNECT REPOSITORY
 // ─────────────────────────────────────────────────────────────────────────────
-projectRepositoryRouter.delete('/:projectId/repository', async (req: Request, res: Response) => {
+projectRepositoryRouter.delete('/:projectId/repository', projectOwnerOnly, async (req: Request, res: Response) => {
   try {
     const { projectId } = req.params;
     await prisma.repository.deleteMany({ where: { projectId } });

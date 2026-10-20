@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
+import { getUserId } from '../middleware/auth';
 
 export const presenceRouter = Router();
 
@@ -42,10 +43,11 @@ presenceRouter.get('/', async (req, res) => {
 
 // POST /api/presence/heartbeat - Update user's presence heartbeat and current activity
 presenceRouter.post('/heartbeat', async (req, res) => {
-  const { userId, status = 'online', customStatus, currentActivity } = req.body;
+  const { status = 'online', customStatus, currentActivity } = req.body;
+  const userId = getUserId(req);
 
   if (!userId) {
-    return res.status(400).json({ error: 'userId is required' });
+    return res.status(401).json({ error: 'Authentication required' });
   }
 
   try {

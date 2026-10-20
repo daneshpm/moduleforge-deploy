@@ -1,15 +1,30 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
+import { authenticate, getUserId } from '../middleware/auth';
 
 export const directChatsRouter = Router();
+directChatsRouter.use(authenticate);
+
+// Any route with :chatId requires the caller to be a participant
+directChatsRouter.param('chatId', async (req, res, next, chatId) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+    const p = await (prisma as any).directChatParticipant.findFirst({ where: { chatId, userId }, select: { id: true } });
+    if (!p) return res.status(404).json({ error: 'Chat not found' });
+    next();
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to verify chat access' });
+  }
+});
 
 // GET /api/chats - List direct chats for a user
 directChatsRouter.get('/', async (req, res) => {
   try {
-    const { userId } = req.query;
+    const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     // Find all chats where user is a participant
@@ -72,10 +87,11 @@ directChatsRouter.get('/', async (req, res) => {
 // POST /api/chats - Create or retrieve existing direct chat between two users
 directChatsRouter.post('/', async (req, res) => {
   try {
-    const { userId, recipientId } = req.body;
+    const { recipientId } = req.body;
+    const userId = getUserId(req);
 
     if (!userId || !recipientId) {
-      return res.status(400).json({ error: 'userId and recipientId are required' });
+      return res.status(400).json({ error: 'authenticated user and recipientId are required' });
     }
 
     if (userId === recipientId) {
@@ -166,7 +182,8 @@ directChatsRouter.get('/:chatId/messages', async (req, res) => {
 directChatsRouter.post('/:chatId/messages', async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { senderId, text, attachments = [] } = req.body;
+    const { text, attachments = [] } = req.body;
+    const senderId = getUserId(req);
 
     if (!senderId || (!text && (!attachments || attachments.length === 0))) {
       return res.status(400).json({ error: 'senderId and text/attachments are required' });

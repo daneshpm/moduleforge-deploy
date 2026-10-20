@@ -62,15 +62,16 @@ const handleWebhook = async (req: any, res: any) => {
   try {
     const signature = req.headers['x-hub-signature-256'] as string;
     const event = req.headers['x-github-event'] as string;
-    const secret = process.env.GITHUB_WEBHOOK_SECRET || 'moduleforge_webhook_secret';
+    const secret = process.env.GITHUB_WEBHOOK_SECRET;
 
-    // 1. Verify HMAC signature when provided
-    if (signature) {
-      const isValid = verifyGitHubSignature(req.rawBody, signature, secret);
-      if (!isValid) {
-        console.warn('⚠️ GitHub Webhook signature verification failed');
-        return res.status(401).json({ error: 'Invalid GitHub webhook signature' });
-      }
+    // 1. The signature is mandatory. Fail closed if no secret is configured.
+    if (!secret) {
+      console.error('GITHUB_WEBHOOK_SECRET is not set; rejecting webhook');
+      return res.status(503).json({ error: 'Webhook receiver is not configured' });
+    }
+    if (!signature || !verifyGitHubSignature(req.rawBody, signature, secret)) {
+      console.warn('GitHub Webhook signature missing or invalid');
+      return res.status(401).json({ error: 'Invalid GitHub webhook signature' });
     }
 
     // 2. Only process push events (or test ping events)

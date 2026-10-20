@@ -14,7 +14,29 @@ import {
   getWebhookUrl,
 } from '../services/githubWebhookService';
 
+import { getUserId, isEnforced } from '../middleware/auth';
+
 export const modulesRouter = Router();
+
+// Only the module's author may modify / sync / delete it.
+async function moduleOwnerOnly(req: any, res: any, next: any) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+    const mod = await (prisma as any).module.findFirst({
+      where: { OR: [{ id: req.params.id }, { slug: req.params.id }] },
+      select: { authorId: true },
+    });
+    if (!mod) return res.status(404).json({ error: 'Module not found' });
+    if (mod.authorId ? mod.authorId !== userId : isEnforced()) {
+      return res.status(403).json({ error: 'Only the module author can do this' });
+    }
+    next();
+  } catch (e: any) {
+    res.status(500).json({ error: 'Failed to verify module ownership' });
+  }
+}
+
 
 // On Vercel the filesystem outside /tmp is read-only — use /tmp in production
 const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
@@ -345,7 +367,7 @@ modulesRouter.post('/', async (req, res) => {
       deployedUrl,
     } = req.body;
 
-    const rawAuthorId = bodyAuthorId || (req.headers['x-user-id'] as string | undefined);
+    const rawAuthorId = getUserId(req);
     let validAuthorId: string | null = null;
     if (rawAuthorId && typeof rawAuthorId === 'string' && rawAuthorId.trim()) {
       try {
@@ -503,7 +525,7 @@ modulesRouter.post('/', async (req, res) => {
 });
 
 // PUT /api/modules/:id - Update Module (including Deployed URL)
-modulesRouter.put('/:id', async (req, res) => {
+modulesRouter.put('/:id', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -600,7 +622,7 @@ modulesRouter.put('/:id', async (req, res) => {
 });
 
 // PATCH /api/modules/:id - Patch alias
-modulesRouter.patch('/:id', async (req, res) => {
+modulesRouter.patch('/:id', moduleOwnerOnly, async (req, res) => {
   // Delegate to PUT handler logic
   try {
     const { id } = req.params;
@@ -738,7 +760,7 @@ modulesRouter.get('/:id/download', async (req, res) => {
 });
 
 // DELETE /api/modules/:id - Delete module folder & database record
-modulesRouter.delete('/:id', async (req, res) => {
+modulesRouter.delete('/:id', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -776,7 +798,7 @@ modulesRouter.delete('/:id', async (req, res) => {
 });
 
 // POST /api/modules/:id/check-sync - Check GitHub for new commits
-modulesRouter.post('/:id/check-sync', async (req, res) => {
+modulesRouter.post('/:id/check-sync', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -846,7 +868,7 @@ modulesRouter.post('/:id/check-sync', async (req, res) => {
 });
 
 // POST /api/modules/:id/sync - Perform Manual Synchronization
-modulesRouter.post('/:id/sync', async (req, res) => {
+modulesRouter.post('/:id/sync', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1022,7 +1044,7 @@ modulesRouter.get('/:id/webhook-status', async (req, res) => {
 });
 
 // POST /api/modules/:id/register-webhook - Register a GitHub push webhook
-modulesRouter.post('/:id/register-webhook', async (req, res) => {
+modulesRouter.post('/:id/register-webhook', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
     // Allow client to pass their own token from the Settings page
@@ -1062,7 +1084,7 @@ modulesRouter.post('/:id/register-webhook', async (req, res) => {
 });
 
 // DELETE /api/modules/:id/webhook - Remove the GitHub push webhook
-modulesRouter.delete('/:id/webhook', async (req, res) => {
+modulesRouter.delete('/:id/webhook', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1090,7 +1112,7 @@ modulesRouter.delete('/:id/webhook', async (req, res) => {
 });
 
 // PUT /api/modules/:id/runtime-config - Update Module Runtime Configuration
-modulesRouter.put('/:id/runtime-config', async (req, res) => {
+modulesRouter.put('/:id/runtime-config', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
     const {

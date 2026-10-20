@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
+import { authenticate, getUserId, isEnforced } from '../middleware/auth';
 import { realtimeEventManager } from '../services/realtimeEvents';
 
 export const invitationsRouter = Router();
@@ -146,10 +147,10 @@ invitationsRouter.get('/:token', async (req, res) => {
 });
 
 // POST /api/invitations/:token/accept - Accept invitation & join team
-invitationsRouter.post('/:token/accept', async (req, res) => {
+invitationsRouter.post('/:token/accept', authenticate, async (req, res) => {
   try {
     const { token } = req.params;
-    const { userId } = req.body;
+    const userId = getUserId(req);
 
     if (!userId) {
       return res.status(401).json({ error: 'You must be signed in to accept this invitation' });
@@ -161,6 +162,9 @@ invitationsRouter.post('/:token/accept', async (req, res) => {
       where: { id: userId },
     });
 
+    if (!user && isEnforced()) {
+      return res.status(401).json({ error: 'No account for this session' });
+    }
     if (!user) {
       const email = req.body.email || `${userId}@gmail.com`;
       user = await (prisma as any).user.create({
@@ -357,10 +361,10 @@ invitationsRouter.post('/:token/accept', async (req, res) => {
 });
 
 // POST /api/invitations/:token/decline - Decline invitation
-invitationsRouter.post('/:token/decline', async (req, res) => {
+invitationsRouter.post('/:token/decline', authenticate, async (req, res) => {
   try {
     const { token } = req.params;
-    const { userId } = req.body;
+    const userId = getUserId(req);
 
     const invitation = await (prisma as any).teamInvitation.findUnique({
       where: { token },

@@ -3,8 +3,10 @@ import { prisma } from '../prisma';
 import { createLiveKitToken } from '../services/livekit';
 import { emailService } from '../services/emailService';
 import { realtimeEventManager } from '../services/realtimeEvents';
+import { authenticate, getUserId, isEnforced } from '../middleware/auth';
 
 export const meetingsRouter = Router();
+meetingsRouter.use(authenticate);
 
 // Helper to check user access in team or project
 async function verifyAccess(userId: string, teamId?: string | null, projectId?: string | null): Promise<boolean> {
@@ -47,18 +49,43 @@ async function verifyAccess(userId: string, teamId?: string | null, projectId?: 
   return true;
 }
 
+// Routes with :meetingId: caller must be the creator, a participant, or a member of the meeting's team/project.
+// (join does its own check so invitees to unscoped meetings can still join.)
+meetingsRouter.param('meetingId', async (req, res, next, meetingId) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+    if (req.method === 'POST' && /\/join\/?$/.test(req.path)) return next();
+    const m = await (prisma as any).meeting.findFirst({
+      where: { OR: [{ id: meetingId }, { roomId: meetingId }] },
+      select: { id: true, createdById: true, teamId: true, projectId: true, participants: { where: { userId }, select: { id: true } } },
+    });
+    if (!m) return res.status(404).json({ error: 'Meeting not found' });
+    const scoped = !!(m.teamId || m.projectId);
+    const ok = m.createdById === userId || m.participants.length > 0 || (scoped && (await verifyAccess(userId, m.teamId, m.projectId)));
+    if (!ok) return res.status(404).json({ error: 'Meeting not found' });
+    next();
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to verify meeting access' });
+  }
+});
+
 // POST /api/meetings - Create and start a meeting
 meetingsRouter.post('/', async (req, res) => {
   try {
-    const { title, teamId, projectId, channelId, createdById, meetingId: customMeetingId, invitedMembers, appUrl: clientAppUrl } = req.body;
+    const { title, teamId, projectId, channelId, meetingId: customMeetingId, invitedMembers, appUrl: clientAppUrl } = req.body;
 
-    if (!title || !createdById) {
-      return res.status(400).json({ error: 'title and createdById are required' });
+    const createdById = getUserId(req);
+    if (!createdById) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    if (!title) {
+      return res.status(400).json({ error: 'title is required' });
     }
 
     const hasAccess = await verifyAccess(createdById, teamId, projectId);
     if (!hasAccess) {
-      console.warn(`[Meetings] User ${createdById} starting meeting without explicit team/project role, proceeding with graceful access.`);
+      return res.status(403).json({ error: 'You are not a member of this team/project' });
     }
 
     const roomId = customMeetingId || `room-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -77,6 +104,10 @@ meetingsRouter.post('/', async (req, res) => {
           select: { id: true, name: true, username: true, email: true, avatarUrl: true },
         });
       }
+    }
+
+    if (!creator && isEnforced()) {
+      return res.status(401).json({ error: 'No account for this session' });
     }
 
     if (!creator) {
@@ -293,6 +324,10 @@ meetingsRouter.post('/', async (req, res) => {
 meetingsRouter.get('/team/:teamId', async (req, res) => {
   try {
     const { teamId } = req.params;
+    const callerId = getUserId(req);
+    if (!callerId || !(await verifyAccess(callerId, teamId, null))) {
+      return res.status(403).json({ error: 'You are not a member of this team' });
+    }
 
     const meetings = await (prisma as any).meeting.findMany({
       where: { teamId },
@@ -320,10 +355,10 @@ meetingsRouter.get('/team/:teamId', async (req, res) => {
 // GET /api/meetings/active - List active meetings for a user's teams/projects
 meetingsRouter.get('/active', async (req, res) => {
   try {
-    const { userId } = req.query;
+    const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     // Find all team IDs and project IDs for this user
@@ -418,10 +453,10 @@ meetingsRouter.get('/:meetingId', async (req, res) => {
 meetingsRouter.post('/:meetingId/join', async (req, res) => {
   try {
     const { meetingId } = req.params;
-    const { userId } = req.body;
+    const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     const meeting = await (prisma as any).meeting.findFirst({
@@ -497,10 +532,10 @@ meetingsRouter.post('/:meetingId/join', async (req, res) => {
 meetingsRouter.post('/:meetingId/leave', async (req, res) => {
   try {
     const { meetingId } = req.params;
-    const { userId } = req.body;
+    const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     await (prisma as any).meetingParticipant.updateMany({
@@ -583,7 +618,8 @@ meetingsRouter.get('/:meetingId/messages', async (req, res) => {
 meetingsRouter.post('/:meetingId/messages', async (req, res) => {
   try {
     const { meetingId } = req.params;
-    const { senderId, text } = req.body;
+    const { text } = req.body;
+    const senderId = getUserId(req);
 
     if (!senderId || !text) {
       return res.status(400).json({ error: 'senderId and text are required' });

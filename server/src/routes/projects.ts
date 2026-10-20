@@ -11,8 +11,13 @@ import { generateUnifiedFrontendFiles, ModuleRuntimeSpec } from '../services/uni
 import { gitService } from '../services/gitService';
 import { projectRepoService } from '../services/projectRepoService';
 import { projectRepositoryRouter } from './projectRepository';
+import { getUserId, isEnforced } from '../middleware/auth';
+import { projectMemberParam, projectOwnerOnly } from '../middleware/access';
 
 export const projectsRouter = Router();
+
+// Every route with a project :id requires project membership (sub-router handles :projectId itself)
+projectsRouter.param('id', projectMemberParam);
 
 // Mount project repository sub-router
 projectsRouter.use('/', projectRepositoryRouter);
@@ -20,15 +25,16 @@ projectsRouter.use('/', projectRepositoryRouter);
 // GET /api/projects - List user projects
 projectsRouter.get('/', async (req, res) => {
   try {
-    const userId = (req.query.userId || req.headers['x-user-id']) as string | undefined;
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
 
-    const whereClause: any = {};
-    if (userId) {
-      whereClause.OR = [
+    const whereClause: any = {
+      OR: [
         { userId },
-        { members: { some: { userId } } },
-      ];
-    }
+        { members: { some: { userId, status: 'accepted' } } },
+        { team: { OR: [{ ownerId: userId }, { members: { some: { userId } } }] } },
+      ],
+    };
 
     const projects = await prisma.project.findMany({
       where: whereClause,
@@ -56,7 +62,6 @@ projectsRouter.post('/', async (req, res) => {
     const {
       name,
       description,
-      userId: bodyUserId,
       teamId,
       userEmail,
       userName,
@@ -74,7 +79,18 @@ projectsRouter.post('/', async (req, res) => {
       githubToken,
     } = req.body;
 
-    const userId = bodyUserId || (req.headers['x-user-id'] as string | undefined);
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+
+    if (teamId) {
+      const tm = await prisma.team.findUnique({
+        where: { id: teamId },
+        select: { ownerId: true, members: { where: { userId }, select: { id: true } } },
+      });
+      if (!tm || (tm.ownerId !== userId && tm.members.length === 0)) {
+        return res.status(403).json({ error: 'You are not a member of this team' });
+      }
+    }
 
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Project name is required' });
@@ -83,15 +99,17 @@ projectsRouter.post('/', async (req, res) => {
     let validUserId: string | null = null;
     if (userId && typeof userId === 'string' && userId.trim()) {
       let user = await prisma.user.findFirst({
-        where: {
-          OR: [
-            { id: userId.trim() },
-            ...(userEmail ? [{ email: userEmail }] : []),
-          ],
-        },
+        where: isEnforced()
+          ? { id: userId.trim() }
+          : {
+              OR: [
+                { id: userId.trim() },
+                ...(userEmail ? [{ email: userEmail }] : []),
+              ],
+            },
       });
 
-      if (!user) {
+      if (!user && !isEnforced()) {
         try {
           const safeEmail = userEmail || `${userId.trim()}@moduleforge.local`;
           const baseName = userName || userId.trim().slice(0, 10);
@@ -469,7 +487,7 @@ projectsRouter.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/projects/:id - Delete project
-projectsRouter.delete('/:id', async (req, res) => {
+projectsRouter.delete('/:id', projectOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.project.delete({ where: { id } });
@@ -1686,7 +1704,7 @@ projectsRouter.get('/:id/members', async (req, res) => {
 });
 
 // POST /api/projects/:id/members - Invite Team Member with Email and Join Link
-projectsRouter.post('/:id/members', async (req, res) => {
+projectsRouter.post('/:id/members', projectOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
     const { email, role = 'developer', inviterName = 'Project Owner' } = req.body;
@@ -1825,7 +1843,8 @@ projectsRouter.get('/invites/validate', async (req, res) => {
 // POST /api/projects/invites/accept - Accept Invitation and Join Project
 projectsRouter.post('/invites/accept', async (req, res) => {
   try {
-    const { token, userName, userId } = req.body;
+    const { token, userName } = req.body;
+    const userId = getUserId(req);
     if (!token) {
       return res.status(400).json({ error: 'Invite token is required' });
     }
@@ -2059,7 +2078,7 @@ projectsRouter.get('/:id/members/status', async (req, res) => {
 });
 
 // POST /api/projects/:id/members/:memberId/approve - Owner Approves Team Member
-projectsRouter.post('/:id/members/:memberId/approve', async (req, res) => {
+projectsRouter.post('/:id/members/:memberId/approve', projectOwnerOnly, async (req, res) => {
   try {
     const { id, memberId } = req.params;
 
@@ -2100,7 +2119,7 @@ projectsRouter.post('/:id/members/:memberId/approve', async (req, res) => {
 });
 
 // POST /api/projects/:id/members/:memberId/reject - Owner Rejects Team Member
-projectsRouter.post('/:id/members/:memberId/reject', async (req, res) => {
+projectsRouter.post('/:id/members/:memberId/reject', projectOwnerOnly, async (req, res) => {
   try {
     const { id, memberId } = req.params;
 
@@ -2127,7 +2146,7 @@ projectsRouter.post('/:id/members/:memberId/reject', async (req, res) => {
 });
 
 // DELETE /api/projects/:id/members/:memberId - Remove Team Member
-projectsRouter.delete('/:id/members/:memberId', async (req, res) => {
+projectsRouter.delete('/:id/members/:memberId', projectOwnerOnly, async (req, res) => {
   try {
     const { id, memberId } = req.params;
     await prisma.projectMember.delete({ where: { id: memberId } });

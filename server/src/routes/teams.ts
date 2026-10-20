@@ -4,6 +4,7 @@ import { prisma } from '../prisma';
 import { emailService } from '../services/emailService';
 import { realtimeEventManager } from '../services/realtimeEvents';
 import { teamIssueService } from '../services/teamIssueService';
+import { getUserId, isEnforced } from '../middleware/auth';
 
 export const teamsRouter = Router();
 
@@ -40,27 +41,31 @@ async function getCallerTeamRole(teamId: string, userId?: string): Promise<{ isO
 // POST /api/teams - Create a new team
 teamsRouter.post('/', async (req, res) => {
   try {
-    const { name, description, avatarUrl, ownerId, ownerEmail, ownerName, ownerUsername } = req.body;
+    const { name, description, avatarUrl, ownerEmail, ownerName, ownerUsername } = req.body;
+    // The owner is always the authenticated caller (never a client-supplied id)
+    const ownerId = getUserId(req);
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Team name is required' });
     }
 
     if (!ownerId) {
-      return res.status(400).json({ error: 'Owner user ID is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     let owner = await (prisma as any).user.findFirst({
-      where: {
-        OR: [
-          { id: ownerId },
-          ...(ownerEmail ? [{ email: ownerEmail }] : []),
-          ...(ownerUsername ? [{ username: String(ownerUsername).replace(/^@/, '') }] : []),
-        ],
-      },
+      where: isEnforced()
+        ? { id: ownerId }
+        : {
+            OR: [
+              { id: ownerId },
+              ...(ownerEmail ? [{ email: ownerEmail }] : []),
+              ...(ownerUsername ? [{ username: String(ownerUsername).replace(/^@/, '') }] : []),
+            ],
+          },
     });
 
-    if (!owner) {
+    if (!owner && !isEnforced()) {
       try {
         const safeEmail = ownerEmail || `${ownerId}@moduleforge.local`;
         const baseUsername = (ownerUsername?.replace(/^@/, '') || ownerName?.replace(/[^a-z0-9_]/gi, '') || 'dev')
@@ -79,8 +84,7 @@ teamsRouter.post('/', async (req, res) => {
           },
         });
       } catch (upsertErr) {
-        console.warn('Could not auto-create owner user, checking existing users:', upsertErr);
-        owner = await (prisma as any).user.findFirst();
+        console.warn('Could not auto-create owner user:', upsertErr);
       }
     }
 
@@ -147,10 +151,10 @@ teamsRouter.post('/', async (req, res) => {
 // GET /api/teams - List all teams current user belongs to or owns
 teamsRouter.get('/', async (req, res) => {
   try {
-    const userId = (req.query.userId || req.headers['x-user-id']) as string | undefined;
+    const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     const teams = await (prisma as any).team.findMany({
@@ -218,7 +222,8 @@ teamsRouter.get('/', async (req, res) => {
 teamsRouter.get('/:teamId', async (req, res) => {
   try {
     const { teamId } = req.params;
-    const userId = (req.query.userId || req.headers['x-user-id']) as string | undefined;
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
 
     const team = await (prisma as any).team.findUnique({
       where: { id: teamId },
@@ -272,8 +277,12 @@ teamsRouter.get('/:teamId', async (req, res) => {
       return res.status(404).json({ error: 'Team not found' });
     }
 
-    const callerMembership = userId ? team.members.find((m: any) => m.userId === userId) : null;
+    const callerMembership = team.members.find((m: any) => m.userId === userId);
     const isOwner = team.ownerId === userId;
+    if (!isOwner && !callerMembership) {
+      // Do not reveal that the team exists to non-members
+      return res.status(404).json({ error: 'Team not found' });
+    }
     const isAdmin = isOwner || callerMembership?.role === 'admin';
     const userRole = isOwner ? 'owner' : (callerMembership?.role || 'viewer');
 
@@ -297,7 +306,8 @@ teamsRouter.get('/:teamId', async (req, res) => {
 teamsRouter.patch('/:teamId', async (req, res) => {
   try {
     const { teamId } = req.params;
-    const { name, description, avatarUrl, userId } = req.body;
+    const { name, description, avatarUrl } = req.body;
+    const userId = getUserId(req);
 
     const caller = await getCallerTeamRole(teamId, userId);
     if (!caller || !caller.isAdmin) {
@@ -324,7 +334,7 @@ teamsRouter.patch('/:teamId', async (req, res) => {
 teamsRouter.delete('/:teamId', async (req, res) => {
   try {
     const { teamId } = req.params;
-    const userId = (req.query.userId || req.body?.userId || req.headers['x-user-id']) as string | undefined;
+    const userId = getUserId(req);
 
     const team = await (prisma as any).team.findUnique({
       where: { id: teamId },
@@ -334,7 +344,7 @@ teamsRouter.delete('/:teamId', async (req, res) => {
       return res.status(404).json({ error: 'Team not found' });
     }
 
-    if (team.ownerId !== userId) {
+    if (!userId || team.ownerId !== userId) {
       return res.status(403).json({ error: 'Only the team owner can delete this team' });
     }
 
@@ -353,7 +363,7 @@ teamsRouter.delete('/:teamId', async (req, res) => {
 teamsRouter.delete('/:teamId/members/:memberUserId', async (req, res) => {
   try {
     const { teamId, memberUserId } = req.params;
-    const callerId = (req.query.userId || req.headers['x-user-id']) as string | undefined;
+    const callerId = getUserId(req);
 
     const caller = await getCallerTeamRole(teamId, callerId);
     if (!caller || !caller.isAdmin) {
@@ -388,7 +398,8 @@ teamsRouter.delete('/:teamId/members/:memberUserId', async (req, res) => {
 teamsRouter.patch('/:teamId/members/:memberUserId/role', async (req, res) => {
   try {
     const { teamId, memberUserId } = req.params;
-    const { role, callerUserId } = req.body;
+    const { role } = req.body;
+    const callerUserId = getUserId(req);
 
     if (!['admin', 'member'].includes(role)) {
       return res.status(400).json({ error: 'Role must be either "admin" or "member"' });
@@ -425,14 +436,15 @@ teamsRouter.patch('/:teamId/members/:memberUserId/role', async (req, res) => {
 teamsRouter.post('/:teamId/invitations/username', async (req, res) => {
   try {
     const { teamId } = req.params;
-    const { username, role = 'member', inviterId } = req.body;
+    const { username, role = 'member' } = req.body;
+    const inviterId = getUserId(req);
 
     if (!username || !username.trim()) {
       return res.status(400).json({ error: 'Username is required' });
     }
 
     if (!inviterId) {
-      return res.status(400).json({ error: 'Inviter ID is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     const caller = await getCallerTeamRole(teamId, inviterId);
@@ -562,14 +574,15 @@ teamsRouter.post('/:teamId/invitations/username', async (req, res) => {
 teamsRouter.post('/:teamId/invitations/email', async (req, res) => {
   try {
     const { teamId } = req.params;
-    const { email, role = 'member', inviterId } = req.body;
+    const { email, role = 'member' } = req.body;
+    const inviterId = getUserId(req);
 
     if (!email || !email.trim() || !email.includes('@')) {
       return res.status(400).json({ error: 'A valid email address is required' });
     }
 
     if (!inviterId) {
-      return res.status(400).json({ error: 'Inviter ID is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     const caller = await getCallerTeamRole(teamId, inviterId);
@@ -704,11 +717,16 @@ teamsRouter.post('/:teamId/invitations/email', async (req, res) => {
 teamsRouter.delete('/:teamId/invitations/:invitationId', async (req, res) => {
   try {
     const { teamId, invitationId } = req.params;
-    const callerId = (req.query.userId || req.headers['x-user-id']) as string | undefined;
+    const callerId = getUserId(req);
 
     const caller = await getCallerTeamRole(teamId, callerId);
     if (!caller) {
       return res.status(403).json({ error: 'You must be a member of this team to manage invitations' });
+    }
+
+    const inv = await (prisma as any).teamInvitation.findUnique({ where: { id: invitationId } });
+    if (!inv || inv.teamId !== teamId) {
+      return res.status(404).json({ error: 'Invitation not found' });
     }
 
     await (prisma as any).teamInvitation.delete({
@@ -730,6 +748,17 @@ teamsRouter.delete('/:teamId/invitations/:invitationId', async (req, res) => {
 // ============================================================================
 // TEAM ISSUES (GITHUB-STYLE TICKETING)
 // ============================================================================
+
+// All issue routes require team membership
+teamsRouter.use('/:teamId/issues', async (req, res, next) => {
+  try {
+    const caller = await getCallerTeamRole(req.params.teamId, getUserId(req));
+    if (!caller) return res.status(404).json({ error: 'Team not found' });
+    next();
+  } catch (e: any) {
+    res.status(500).json({ error: 'Failed to verify team access' });
+  }
+});
 
 // GET /api/teams/:teamId/issues - List team issues with filters & counts
 teamsRouter.get('/:teamId/issues', async (req, res) => {
@@ -756,7 +785,8 @@ teamsRouter.get('/:teamId/issues', async (req, res) => {
 teamsRouter.post('/:teamId/issues', async (req, res) => {
   try {
     const { teamId } = req.params;
-    const { title, description, priority, labels, author, assignee } = req.body;
+    const { title, description, priority, labels, assignee } = req.body;
+    const author = { ...(req.body.author || {}), id: getUserId(req) };
 
     if (!title || !title.trim()) {
       return res.status(400).json({ error: 'Issue title is required' });
@@ -821,7 +851,8 @@ teamsRouter.patch('/:teamId/issues/:issueId', async (req, res) => {
 teamsRouter.post('/:teamId/issues/:issueId/comments', async (req, res) => {
   try {
     const { teamId, issueId } = req.params;
-    const { author, content } = req.body;
+    const { content } = req.body;
+    const author = { ...(req.body.author || {}), id: getUserId(req) };
 
     if (!content || !content.trim()) {
       return res.status(400).json({ error: 'Comment content cannot be empty' });

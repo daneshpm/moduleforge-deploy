@@ -2,13 +2,31 @@ import { Router } from 'express';
 import { prisma } from '../prisma';
 import { createLiveKitToken, DEFAULT_ICE_SERVERS } from '../services/livekit';
 import { realtimeEventManager } from '../services/realtimeEvents';
+import { authenticate, getUserId } from '../middleware/auth';
 
 export const callsRouter = Router();
+callsRouter.use(authenticate);
+
+// Routes with :callId are restricted to the call's two participants
+callsRouter.param('callId', async (req, res, next, callId) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+    const call = await (prisma as any).callSession.findUnique({ where: { id: callId }, select: { callerId: true, receiverId: true } });
+    if (!call || (call.callerId !== userId && call.receiverId !== userId)) {
+      return res.status(404).json({ error: 'Call not found' });
+    }
+    next();
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to verify call access' });
+  }
+});
 
 // POST /api/calls/initiate - Start a 1:1 call
 callsRouter.post('/initiate', async (req, res) => {
   try {
-    const { callerId, receiverId, type = 'voice', chatId } = req.body;
+    const { receiverId, type = 'voice', chatId } = req.body;
+    const callerId = getUserId(req);
 
     if (!callerId || !receiverId) {
       return res.status(400).json({ error: 'callerId and receiverId are required' });
@@ -65,10 +83,10 @@ callsRouter.post('/initiate', async (req, res) => {
 // GET /api/calls/active - Check for active incoming or ongoing calls for a user
 callsRouter.get('/active', async (req, res) => {
   try {
-    const { userId } = req.query;
+    const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     const activeCall = await (prisma as any).callSession.findFirst({
@@ -100,10 +118,11 @@ callsRouter.get('/active', async (req, res) => {
 // GET /api/calls/history - Get call logs for a user (Must be before /:callId)
 callsRouter.get('/history', async (req, res) => {
   try {
-    const { userId, limit = 30 } = req.query;
+    const { limit = 30 } = req.query;
+    const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     const history = await (prisma as any).callSession.findMany({
@@ -164,10 +183,10 @@ callsRouter.get('/:callId', async (req, res) => {
 callsRouter.post('/:callId/token', async (req, res) => {
   try {
     const { callId } = req.params;
-    const { userId } = req.body;
+    const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     const call = await (prisma as any).callSession.findUnique({

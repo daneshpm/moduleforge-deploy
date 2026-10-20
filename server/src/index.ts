@@ -16,33 +16,34 @@ import { directChatsRouter } from './routes/directChats';
 import { callsRouter } from './routes/calls';
 import { meetingsRouter } from './routes/meetings';
 import { presenceRouter } from './routes/presence';
+import { authenticate, authenticateUnlessGet, logAuthStartupWarnings } from './middleware/auth';
 
 dotenv.config();
+logAuthStartupWarnings();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const isDev = process.env.NODE_ENV !== 'production';
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
-// In production only allow the configured frontend origin.
+// In production only the origins listed in ALLOWED_ORIGINS are allowed (no wildcard,
+// no *.vercel.app). Requests with no Origin header (curl, same-origin, webhooks) pass.
 // In development allow any origin so the Vite dev server can reach the API.
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
   : [];
+if (!isDev && allowedOrigins.length === 0) {
+  console.warn('WARNING: ALLOWED_ORIGINS is not set in production; all cross-origin browser requests will be rejected.');
+}
 
 app.use(
   cors({
     origin: isDev
-      ? true // allow all in dev
+      ? true
       : (origin, callback) => {
-          // allow requests with no origin (curl, Vercel internal, webhooks, same-origin)
           if (!origin) return callback(null, true);
-          // On Vercel the frontend and API are on the same domain — always allow same origin
-          if (allowedOrigins.length === 0) return callback(null, true);
           if (allowedOrigins.includes(origin)) return callback(null, true);
-          // Also allow any vercel.app subdomain of this project (preview deployments)
-          if (origin.endsWith('.vercel.app')) return callback(null, true);
-          callback(new Error(`CORS: origin "${origin}" not allowed`));
+          callback(null, false);
         },
     credentials: true,
   })
@@ -74,17 +75,22 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ── API routes ────────────────────────────────────────────────────────────────
+// /api/auth/sync verifies the token itself (inside the route); google-dev is dev-only.
 app.use('/api/auth', authRouter);
-app.use('/api/users', usersRouter);
-app.use('/api/teams', teamsRouter);
+app.use('/api/users', authenticate, usersRouter);
+app.use('/api/teams', authenticate, teamsRouter);
+// GET /api/invitations/:token stays public (the token is the secret); accept/decline are protected in the router.
 app.use('/api/invitations', invitationsRouter);
-app.use('/api/notifications', notificationsRouter);
-app.use('/api/modules', modulesRouter);
-app.use('/api/projects', projectsRouter);
-app.use('/api/presence', presenceRouter);
+app.use('/api/notifications', authenticate, notificationsRouter);
+// Marketplace reads (GET) are public; every write requires authentication.
+app.use('/api/modules', authenticateUnlessGet, modulesRouter);
+app.use('/api/projects', authenticate, projectsRouter);
+app.use('/api/presence', authenticate, presenceRouter);
+// GitHub webhook: no user auth; protected by mandatory HMAC signature (GITHUB_WEBHOOK_SECRET)
+app.use('/api/webhooks', webhooksRouter);
 
 // ── GitHub Helper Routes ──────────────────────────────────────────────────────
-app.post('/api/github/connect', async (req, res) => {
+app.post('/api/github/connect', authenticate, async (req, res) => {
   try {
     const { token } = req.body;
     const testToken = token || process.env.GITHUB_TOKEN;
@@ -117,7 +123,7 @@ app.post('/api/github/connect', async (req, res) => {
   }
 });
 
-app.get('/api/github/repositories', async (req, res) => {
+app.get('/api/github/repositories', authenticate, async (req, res) => {
   try {
     const token = (req.headers['x-github-token'] || req.query.token) as string | undefined;
     const { projectRepoService } = require('./services/projectRepoService');
@@ -136,8 +142,8 @@ if (isDev) {
   const { runnerRouter } = require('./routes/runner');
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const gitRouter = require('./routes/git').default;
-  app.use('/api/runner', runnerRouter);
-  app.use('/api/git', gitRouter);
+  app.use('/api/runner', authenticate, runnerRouter);
+  app.use('/api/git', authenticate, gitRouter);
 } else {
   app.use('/api/runner', (_req: any, res: any) => {
     res.status(503).json({

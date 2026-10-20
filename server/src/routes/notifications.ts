@@ -1,16 +1,17 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
 import { realtimeEventManager } from '../services/realtimeEvents';
+import { getUserId } from '../middleware/auth';
 
 export const notificationsRouter = Router();
 
 // GET /api/notifications - Get current user notifications
 notificationsRouter.get('/', async (req, res) => {
   try {
-    const userId = (req.query.userId || req.headers['x-user-id']) as string | undefined;
+    const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     const notifications = await (prisma as any).notification.findMany({
@@ -68,10 +69,10 @@ notificationsRouter.get('/', async (req, res) => {
 
 // GET /api/notifications/stream - Server-Sent Events stream for user notifications
 notificationsRouter.get('/stream', (req, res) => {
-  const userId = (req.query.userId || req.headers['x-user-id']) as string | undefined;
+  const userId = getUserId(req);
 
   if (!userId) {
-    return res.status(400).json({ error: 'User ID is required for notification stream' });
+    return res.status(401).json({ error: 'Authentication required' });
   }
 
   try {
@@ -98,12 +99,14 @@ notificationsRouter.get('/stream', (req, res) => {
 notificationsRouter.patch('/:id/read', async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = (req.query.userId || req.body?.userId || req.headers['x-user-id']) as string | undefined;
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
 
+    // Scoped to the caller: cannot mark someone else's notification
     const notif = await (prisma as any).notification.updateMany({
       where: {
         id,
-        ...(userId ? { userId } : {}),
+        userId,
       },
       data: { read: true },
     });
@@ -118,10 +121,10 @@ notificationsRouter.patch('/:id/read', async (req, res) => {
 // POST /api/notifications/read-all - Mark all notifications as read
 notificationsRouter.post('/read-all', async (req, res) => {
   try {
-    const userId = (req.query.userId || req.body?.userId || req.headers['x-user-id']) as string | undefined;
+    const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     await (prisma as any).notification.updateMany({
@@ -140,7 +143,9 @@ notificationsRouter.post('/read-all', async (req, res) => {
 notificationsRouter.post('/:id/respond', async (req, res) => {
   try {
     const { id } = req.params;
-    const { action, userId } = req.body; // 'accept' | 'decline'
+    const { action } = req.body; // 'accept' | 'decline'
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
 
     if (!['accept', 'decline'].includes(action)) {
       return res.status(400).json({ error: 'Action must be "accept" or "decline"' });
@@ -154,7 +159,7 @@ notificationsRouter.post('/:id/respond', async (req, res) => {
       },
     });
 
-    if (!notif) {
+    if (!notif || notif.userId !== userId) {
       return res.status(404).json({ error: 'Notification not found' });
     }
 
