@@ -1,0 +1,9 @@
+# invoice
+
+Invoices with line items, totals (integer cents, tax percent) and status `draft -> sent -> paid`, or `void`.
+
+- Mount at `/api/invoices`: `GET /`, `POST /`, `GET /:id`, `POST /:id/send`, `POST /:id/void`.
+- Publishes `invoice.created` and `invoice.paid`. Consumes `payment.received` (`{invoiceId, amountCents?}`), usually emitted by a payment provider integration or the host. Partial payments are ignored for now.
+- Optional dependency on `payment-method`: only through events/IDs, never imports.
+- DB: `migrations/001_init.sql` creates `inv_invoices` and `inv_items`.
+- UI: `src/ui/Invoices.tsx` (`<Invoices apiBase headers />`).
