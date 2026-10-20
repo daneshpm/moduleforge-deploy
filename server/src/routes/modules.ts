@@ -5,7 +5,13 @@ import fs from 'fs';
 import JSZip from 'jszip';
 import axios from 'axios';
 import { prisma } from '../prisma';
-import { validateZipBuffer } from '../validator';
+import { validateZipBuffer, validateContractInBuffer, legacyResult, ContractValidationResult } from '../validator';
+import {
+  resolve as resolveDependencies,
+  candidateFromModule,
+  projectModuleRefsFromRows,
+  resolveWarnings,
+} from '../services/dependencyResolver';
 import { gitService } from '../services/gitService';
 import {
   registerWebhook,
@@ -50,6 +56,26 @@ function formatModuleOutput(mod: any) {
   return {
     ...mod,
     technologies: parsedTech,
+  };
+}
+
+// Map a validated contract to the persisted contract columns (all null for legacy modules)
+function contractColumns(contract: ContractValidationResult) {
+  const m = contract.manifest;
+  if (!contract.hasContract || !m) {
+    return {
+      contractVersion: null, dependsOn: null, requiredEnv: null, hostServices: null,
+      eventsPublished: null, eventsConsumed: null, permissions: null,
+    };
+  }
+  return {
+    contractVersion: contract.contractVersion,
+    dependsOn: JSON.stringify(m.dependsOn || []),
+    requiredEnv: JSON.stringify(m.requires?.env || []),
+    hostServices: JSON.stringify(m.requires?.hostServices || []),
+    eventsPublished: JSON.stringify(m.events?.publishes || []),
+    eventsConsumed: JSON.stringify(m.events?.consumes || []),
+    permissions: JSON.stringify(m.permissions || []),
   };
 }
 
@@ -107,6 +133,36 @@ modulesRouter.get('/', async (req, res) => {
   } catch (error: any) {
     console.error('Error fetching modules (using fallback):', error.message);
     res.json([]);
+  }
+});
+
+// GET /api/modules/:id/dependency-check?projectId=... - what would adding this module to a project break?
+modulesRouter.get('/:id/dependency-check', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
+    if (!projectId) {
+      return res.status(400).json({ error: 'projectId query parameter is required' });
+    }
+    const mod = await prisma.module.findFirst({ where: { OR: [{ id }, { slug: id }] } });
+    if (!mod) {
+      return res.status(404).json({ error: 'Module not found' });
+    }
+    const rows = await prisma.projectModule.findMany({
+      where: { projectId },
+      include: { module: true },
+    });
+    const result = resolveDependencies(projectModuleRefsFromRows(rows), candidateFromModule(mod));
+    res.json({
+      moduleId: mod.id,
+      projectId,
+      contractVersion: (mod as any).contractVersion ?? null,
+      ok: result.missing.length === 0 && result.conflicts.length === 0,
+      ...result,
+      warnings: resolveWarnings(result),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -171,6 +227,8 @@ modulesRouter.post('/upload', upload.single('file'), async (req, res) => {
         fileCount: zipValidation.fileCount,
       },
       extractedMetadata: zipValidation.extractedMetadata,
+      contract: zipValidation.contract,
+      warnings: zipValidation.warnings || [],
     });
   } catch (error: any) {
     if (req.file && fs.existsSync(req.file.path)) {
@@ -311,6 +369,8 @@ modulesRouter.post('/github', async (req, res) => {
         stars: repoInfo?.stargazers_count || 0,
       },
       extractedMetadata: zipValidation.extractedMetadata,
+      contract: zipValidation.contract,
+      warnings: zipValidation.warnings || [],
     });
   } catch (error: any) {
     res.status(500).json({ valid: false, error: error.message || 'Failed to import GitHub repository' });
@@ -378,6 +438,23 @@ modulesRouter.post('/', async (req, res) => {
       cleanDeployedUrl = trimmed;
     }
 
+    // Contract validation: read module.json from the stored archive (only from our own storage dir)
+    let contract: ContractValidationResult = legacyResult();
+    if (storagePath && typeof storagePath === 'string') {
+      const resolvedStorage = path.resolve(storagePath);
+      if (resolvedStorage.startsWith(path.resolve(storageDir) + path.sep) && fs.existsSync(resolvedStorage)) {
+        contract = await validateContractInBuffer(fs.readFileSync(resolvedStorage));
+      }
+    }
+    if (contract.hasContract && !contract.valid) {
+      return res.status(400).json({
+        error: 'module.json is invalid',
+        errors: contract.errors,
+        warnings: contract.warnings,
+      });
+    }
+    const contractData = contractColumns(contract);
+
     const categoryName = category || 'Other';
     const authorName = author || 'Developer';
 
@@ -429,6 +506,8 @@ modulesRouter.post('/', async (req, res) => {
       workingDir: workingDir || '.',
       envVars: envVarsJson,
       zipStoragePath: storagePath || null,
+      moduleJson: contract.manifest ? JSON.stringify(contract.manifest) : null,
+      ...contractData,
       deployedUrl: cleanDeployedUrl,
       isPublished: true,
     };
@@ -444,6 +523,8 @@ modulesRouter.post('/', async (req, res) => {
             create: {
               version: version || '1.0.0',
               zipStoragePath: storagePath || null,
+              moduleJson: contract.manifest ? JSON.stringify(contract.manifest) : null,
+              ...contractData,
             },
           },
         },
@@ -458,6 +539,8 @@ modulesRouter.post('/', async (req, res) => {
             create: {
               version: version || '1.0.0',
               zipStoragePath: storagePath || null,
+              moduleJson: contract.manifest ? JSON.stringify(contract.manifest) : null,
+              ...contractData,
             },
           },
         },
@@ -496,6 +579,7 @@ modulesRouter.post('/', async (req, res) => {
     res.status(201).json({
       success: true,
       module: formatModuleOutput(savedModule),
+      warnings: contract.warnings,
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

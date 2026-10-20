@@ -69,6 +69,13 @@ export interface Module {
   zipStoragePath?: string;
   deployedUrl?: string | null;
   moduleJson?: string;
+  contractVersion?: string | null;
+  dependsOn?: string | null;
+  requiredEnv?: string | null;
+  hostServices?: string | null;
+  eventsPublished?: string | null;
+  eventsConsumed?: string | null;
+  permissions?: string | null;
   downloads: number;
   isPublished: boolean;
   authorId?: string;
@@ -398,4 +405,13 @@ export interface ValidationResult {
     version?: string;
     technologies?: string[];
   };
+  contract?: {
+    hasContract: boolean;
+    valid: boolean;
+    contractVersion: string | null;
+    errors: { path: string; message: string }[];
+    warnings: string[];
+    manifest?: any;
+  };
+  warnings?: string[];
 }

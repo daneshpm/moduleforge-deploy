@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://moduleforge.dev/schemas/module.v1.json",
+  "title": "ModuleForge module manifest v1",
+  "type": "object",
+  "required": ["id", "name", "version", "description", "type", "category"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "contractVersion": { "const": "1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "minLength": 2, "maxLength": 64 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "version": { "type": "string", "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$" },
+    "description": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "type": { "enum": ["backend", "frontend", "fullstack"] },
+    "category": {
+      "enum": ["CRM", "Accounting", "Inventory", "Payments", "Authentication", "Analytics", "HR", "E-commerce", "Marketing", "Productivity", "Communication", "Other"]
+    },
+    "author": { "type": "string" },
+    "technologies": { "type": "array", "items": { "type": "string" } },
+    "dependsOn": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "versionRange"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/definitions/slug" },
+          "versionRange": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "provides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiPrefix": { "type": "string", "pattern": "^/[A-Za-z0-9/_:-]*$" },
+        "routes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["method", "path"],
+            "additionalProperties": false,
+            "properties": {
+              "method": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+              "path": { "type": "string", "pattern": "^/" },
+              "description": { "type": "string" },
+              "permission": { "$ref": "#/definitions/permission" }
+            }
+          }
+        },
+        "uiExports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "kind": { "enum": ["component", "page", "hook", "widget"] },
+              "path": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "requires": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "env": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+              "description": { "type": "string" },
+              "secret": { "type": "boolean" }
+            }
+          }
+        },
+        "database": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tables": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+            "prefix": { "type": "string", "pattern": "^[a-z][a-z0-9_]*_$" }
+          }
+        },
+        "hostServices": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)?$" }
+        }
+      }
+    },
+    "events": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "publishes": { "type": "array", "items": { "$ref": "#/definitions/eventName" } },
+        "consumes": { "type": "array", "items": { "$ref": "#/definitions/eventName" } }
+      }
+    },
+    "permissions": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/definitions/permission" } },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "frontendCommand": { "type": "string" },
+        "backendCommand": { "type": "string" },
+        "workingDir": { "type": "string" },
+        "ports": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frontend": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "backend": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "moduleforge": { "type": "string", "minLength": 1 } }
+    }
+  },
+  "definitions": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "permission": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" },
+    "eventName": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" }
+  }
+}

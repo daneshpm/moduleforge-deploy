@@ -170,6 +170,14 @@ model Module {
   envVars             String?         @default("[]") // JSON string array of required env var names
   zipStoragePath      String?
   moduleJson          String?         // Optional JSON string if module.json is present
+  // Module contract (moduleforge manifest v1); null contractVersion = legacy module
+  contractVersion     String?
+  dependsOn           String?         // JSON [{id, versionRange}]
+  requiredEnv         String?         // JSON [{name, description, secret}]
+  hostServices        String?         // JSON string[]
+  eventsPublished     String?         // JSON string[]
+  eventsConsumed      String?         // JSON string[]
+  permissions         String?         // JSON string[]
   downloads           Int             @default(0)
   deployedUrl         String?
   isPublished         Boolean         @default(true)
@@ -206,6 +214,13 @@ model ModuleVersion {
   module         Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   version        String
   moduleJson     String?
+  contractVersion String?
+  dependsOn       String?
+  requiredEnv     String?
+  hostServices    String?
+  eventsPublished String?
+  eventsConsumed  String?
+  permissions     String?
   zipStoragePath String?
   changelog      String?
   createdAt      DateTime @default(now())
