@@ -1,0 +1,32 @@
+{
+  "id": "payment-method",
+  "name": "Payment Methods",
+  "version": "1.0.0",
+  "description": "Saved payment methods per user (token, brand, last4 only) behind a provider adapter interface.",
+  "type": "fullstack",
+  "category": "Payments",
+  "dependsOn": [],
+  "provides": {
+    "apiPrefix": "/api/payment-methods",
+    "routes": [
+      "GET /api/payment-methods",
+      "POST /api/payment-methods",
+      "DELETE /api/payment-methods/:id"
+    ],
+    "uiExports": ["PaymentMethods"]
+  },
+  "requires": {
+    "env": [
+      { "name": "PAYMENT_PROVIDER", "description": "Provider adapter: mock (default) | stripe | razorpay", "secret": false }
+    ],
+    "database": { "tables": ["pm_methods"], "prefix": "pm_" },
+    "hostServices": ["auth.currentUser", "db"]
+  },
+  "events": {
+    "publishes": ["payment_method.added", "payment_method.removed"],
+    "consumes": []
+  },
+  "permissions": ["payment-method.method.read", "payment-method.method.create", "payment-method.method.delete"],
+  "runtime": { "frontendCommand": null, "backendCommand": null, "ports": [] },
+  "compatibility": { "moduleforge": ">=1.0.0" }
+}

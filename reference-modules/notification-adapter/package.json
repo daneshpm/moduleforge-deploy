@@ -1,0 +1,9 @@
+{
+  "name": "@moduleforge-ref/notification-adapter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": { "test": "node --disable-warning=ExperimentalWarning --import tsx --test test/*.test.ts" },
+  "peerDependencies": { "express": "^4.19.2" }
+}
