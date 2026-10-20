@@ -17,7 +17,7 @@ export const validManifest = {
     database: { tables: ['invoice_invoices'], prefix: 'invoice_' },
     hostServices: ['auth.currentUser', 'db', 'notifications'],
   },
-  events: { publishes: ['invoice.invoice.created'], consumes: ['payment-method.payment.captured'] },
+  events: { publishes: ['invoice.created'], consumes: ['payment_method.added'] },
   permissions: ['invoice.invoice.read', 'invoice.invoice.create'],
   runtime: { frontendCommand: 'npm run dev', backendCommand: 'npm start', ports: { frontend: 5173, backend: 5000 } },
   compatibility: { moduleforge: '>=1.0.0' },

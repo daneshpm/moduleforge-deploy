@@ -78,11 +78,13 @@ export function validateManifestObject(manifest: any): ContractValidationResult 
   (manifest.permissions || []).forEach((p: string, i: number) => {
     if (!p.startsWith(`${id}.`)) err(`/permissions/${i}`, `permission "${p}" must be namespaced with the module id "${id}."`);
   });
+  // Event names are `<module_id_with_underscores>.<event>`; only publishes is constrained, consumes may be cross-module.
+  const eventPrefix = `${id.replace(/-/g, '_')}.`;
   (manifest.events?.publishes || []).forEach((p: string, i: number) => {
-    if (!p.startsWith(`${id}.`)) err(`/events/publishes/${i}`, `published event "${p}" must be namespaced with the module id "${id}."`);
+    if (!p.startsWith(eventPrefix)) err(`/events/publishes/${i}`, `published event "${p}" must start with the module id (hyphens as underscores) "${eventPrefix}"`);
   });
   (manifest.events?.consumes || []).forEach((p: string, i: number) => {
-    if (p.startsWith(`${id}.`)) warnings.push(`events.consumes[${i}]: module consumes its own event "${p}"`);
+    if (p.startsWith(eventPrefix)) warnings.push(`events.consumes[${i}]: module consumes its own event "${p}"`);
   });
 
   const db = manifest.requires?.database;

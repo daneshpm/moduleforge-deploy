@@ -44,7 +44,7 @@ test('unknown top-level keys are rejected', () => {
 test('permissions and events must be namespaced with the module id', () => {
   const m = clone();
   m.permissions = ['other.invoice.read'];
-  m.events.publishes = ['other.invoice.created'];
+  m.events.publishes = ['other.created'];
   const r = validateManifestObject(m);
   assert.deepEqual(r.errors.map((e) => e.path).sort(), ['/events/publishes/0', '/permissions/0']);
 });

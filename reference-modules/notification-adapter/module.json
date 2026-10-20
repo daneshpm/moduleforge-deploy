@@ -4,23 +4,37 @@
   "version": "1.0.0",
   "description": "Listens to other modules' events and sends user notifications via the host's notification service. Demonstrates cross-module events without imports.",
   "type": "backend",
-  "category": "Messaging",
+  "category": "Communication",
   "dependsOn": [],
   "provides": {
     "apiPrefix": "/api/notification-adapter",
-    "routes": ["GET /api/notification-adapter/health"],
-    "uiExports": []
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/api/notification-adapter/health"
+      }
+    ]
   },
   "requires": {
     "env": [],
-    "database": { "tables": [], "prefix": "" },
-    "hostServices": ["notifications"]
+    "hostServices": [
+      "notifications"
+    ]
   },
   "events": {
     "publishes": [],
-    "consumes": ["invoice.created", "invoice.paid", "payment_method.added"]
+    "consumes": [
+      "invoice.created",
+      "invoice.paid",
+      "payment_method.added"
+    ]
   },
   "permissions": [],
-  "runtime": { "frontendCommand": null, "backendCommand": null, "ports": [] },
-  "compatibility": { "moduleforge": ">=1.0.0" }
+  "runtime": {
+    "frontendCommand": null,
+    "backendCommand": null
+  },
+  "compatibility": {
+    "moduleforge": ">=1.0.0"
+  }
 }

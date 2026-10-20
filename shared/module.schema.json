@@ -26,7 +26,8 @@
         "additionalProperties": false,
         "properties": {
           "id": { "$ref": "#/definitions/slug" },
-          "versionRange": { "type": "string", "minLength": 1 }
+          "versionRange": { "type": "string", "minLength": 1 },
+          "optional": { "type": "boolean" }
         }
       }
     },
@@ -109,8 +110,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "frontendCommand": { "type": "string" },
-        "backendCommand": { "type": "string" },
+        "frontendCommand": { "type": ["string", "null"] },
+        "backendCommand": { "type": ["string", "null"] },
         "workingDir": { "type": "string" },
         "ports": {
           "type": "object",
@@ -131,6 +132,6 @@
   "definitions": {
     "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
     "permission": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" },
-    "eventName": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" }
+    "eventName": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" }
   }
 }

@@ -25,17 +25,17 @@ schema is [`shared/module.schema.json`](../shared/module.schema.json); validatio
 | `type` | `backend` \| `frontend` \| `fullstack` | yes | |
 | `category` | one of the seeded categories | yes | CRM, Accounting, Inventory, Payments, Authentication, Analytics, HR, E-commerce, Marketing, Productivity, Communication, Other (`server/src/seed.ts`) |
 | `author`, `technologies[]` | | no | Metadata pre-fill |
-| `dependsOn[]` | `{ id, versionRange }` | no | `versionRange` is a semver range; must be valid; no self/duplicate deps |
+| `dependsOn[]` | `{ id, versionRange, optional? }` | no | `versionRange` is a semver range; must be valid; no self/duplicate deps; `optional: true` marks a soft dependency |
 | `provides.apiPrefix` | string | no | e.g. `/api/invoice` |
 | `provides.routes[]` | `{ method, path, description?, permission? }` | no | |
 | `provides.uiExports[]` | `{ name, kind?, path? }` | no | kind: component, page, hook, widget |
 | `requires.env[]` | `{ name, description?, secret? }` | no | `name` is `UPPER_SNAKE`; no duplicates |
-| `requires.database` | `{ tables[], prefix }` | no | prefix like `invoice_`; every table must start with it |
+| `requires.database` | `{ tables[], prefix }` | no | Omit entirely when the module has no tables. prefix like `invoice_`; every table must start with it |
 | `requires.hostServices[]` | string | no | Known: `auth.currentUser`, `db`, `notifications`, `storage`, `email`, `events`, `logger` (unknown = warning) |
-| `events.publishes[]` | `<module>.<entity>.<verb>` | no | Must start with own `id.` |
-| `events.consumes[]` | `<module>.<entity>.<verb>` | no | |
+| `events.publishes[]` | `<module_id_with_underscores>.<event>` (`^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`) | no | Must start with the own module id with hyphens converted to underscores, then `.` (e.g. `payment-method` publishes `payment_method.added`) |
+| `events.consumes[]` | `<module>.<event>` (same pattern) | no | Any valid event name; cross-module by design |
 | `permissions[]` | `<module>.<resource>.<action>` | no | Must start with own `id.` |
-| `runtime` | `{ frontendCommand, backendCommand, workingDir, ports{frontend,backend} }` | no | Maps to Module columns `frontendCommand`, `backendCommand`, `workingDir`, `frontendPort`, `backendPort` |
+| `runtime` | `{ frontendCommand, backendCommand, workingDir, ports{frontend,backend} }` | no | Commands may be a string or `null`, and `ports` may be omitted: library-style modules mounted into a host have no process. Maps to Module columns `frontendCommand`, `backendCommand`, `workingDir`, `frontendPort`, `backendPort` |
 | `compatibility.moduleforge` | semver range | no | Warning if omitted |
 
 Unknown top-level keys are rejected (typos should fail loudly).
@@ -51,14 +51,14 @@ Unknown top-level keys are rejected (typos should fail loudly).
   "description": "Create and send invoices",
   "type": "fullstack",
   "category": "Accounting",
-  "dependsOn": [{ "id": "payment-method", "versionRange": "^1.0.0" }],
+  "dependsOn": [{ "id": "payment-method", "versionRange": "^1.0.0", "optional": false }],
   "provides": { "apiPrefix": "/api/invoice", "routes": [{ "method": "GET", "path": "/invoices", "permission": "invoice.invoice.read" }], "uiExports": [{ "name": "InvoiceList", "kind": "component" }] },
   "requires": {
     "env": [{ "name": "SMTP_URL", "description": "Mail server", "secret": true }],
     "database": { "tables": ["invoice_invoices"], "prefix": "invoice_" },
     "hostServices": ["auth.currentUser", "db", "notifications"]
   },
-  "events": { "publishes": ["invoice.invoice.created"], "consumes": ["payment-method.payment.captured"] },
+  "events": { "publishes": ["invoice.created"], "consumes": ["payment_method.added"] },
   "permissions": ["invoice.invoice.read", "invoice.invoice.create"],
   "runtime": { "frontendCommand": "npm run dev", "backendCommand": "npm start", "ports": { "frontend": 5173, "backend": 5000 } },
   "compatibility": { "moduleforge": ">=1.0.0" }
