@@ -87,11 +87,19 @@ test('zip with valid module.json (inside a root folder) is validated', async () 
 });
 
 test('zip with invalid module.json is still a valid zip but contract has errors', async () => {
-  const buf = await zipOf({ 'module.json': JSON.stringify({ name: 'x' }) });
+  const buf = await zipOf({ 'module.json': JSON.stringify({ contractVersion: '1', name: 'x' }) });
   const r = await validateZipBuffer(buf);
   assert.equal(r.valid, true);
   assert.equal(r.contract?.hasContract, true);
   assert.equal(r.contract?.valid, false);
+});
+
+test('zip with a non-v1 module.json is treated as legacy with a warning, not an error', async () => {
+  const buf = await zipOf({ 'module.json': JSON.stringify({ name: 'x', slug: 'x', technologies: ['Node'] }) });
+  const r = await validateZipBuffer(buf);
+  assert.equal(r.contract?.valid, true);
+  assert.equal(r.contract?.hasContract, false);
+  assert.ok(r.warnings?.includes(LEGACY_WARNING));
 });
 
 test('legacy zip without module.json imports with warning and null contractVersion', async () => {

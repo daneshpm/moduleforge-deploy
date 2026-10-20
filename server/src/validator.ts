@@ -121,7 +121,7 @@ export function validateManifestObject(manifest: any): ContractValidationResult 
   };
 }
 
-/** Parse + validate raw module.json text. */
+/** Parse + validate raw module.json text (strict: always treated as a v1 manifest). */
 export function validateManifestText(raw: string): ContractValidationResult {
   let parsed: any;
   try {
@@ -138,6 +138,34 @@ export function validateManifestText(raw: string): ContractValidationResult {
   return validateManifestObject(parsed);
 }
 
+/** True when a parsed module.json declares itself as manifest v1 (contractVersion "1", or has the v1 identity fields id + type). */
+export function declaresV1(parsed: any): boolean {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+  return parsed.contractVersion === CONTRACT_VERSION || (parsed.id !== undefined && parsed.type !== undefined);
+}
+
+/**
+ * Lenient module.json handling used when publishing/importing archives: a module.json that does NOT declare
+ * manifest v1 (old `slug`/`technologies` shape, no id/type) is a LEGACY module with a warning, never an error.
+ * Only a module.json that declares v1 and fails validation (or is not parseable JSON) is rejected.
+ */
+export function validateModuleJsonText(raw: string): ContractValidationResult {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return validateManifestText(raw); // unparseable -> rejected
+  }
+  if (declaresV1(parsed)) return validateManifestObject(parsed);
+  return {
+    hasContract: false,
+    valid: true,
+    contractVersion: null,
+    errors: [],
+    warnings: [LEGACY_WARNING, 'module.json is not manifest v1 (no contractVersion "1" and no id/type); treated as a legacy module'],
+  };
+}
+
 /** Result for a module without module.json. */
 export function legacyResult(): ContractValidationResult {
   return { hasContract: false, valid: true, contractVersion: null, errors: [], warnings: [LEGACY_WARNING] };
@@ -152,7 +180,7 @@ export async function validateContractInZip(zip: JSZip): Promise<ContractValidat
   // Prefer the shallowest module.json
   files.sort((a, b) => a.split('/').length - b.split('/').length);
   const raw = await zip.files[files[0]].async('string');
-  return validateManifestText(raw);
+  return validateModuleJsonText(raw);
 }
 
 export async function validateContractInBuffer(buffer: Buffer): Promise<ContractValidationResult> {
@@ -168,7 +196,7 @@ export function validateContractInTree(files: Record<string, string>): ContractV
   const names = Object.keys(files).filter((n) => MODULE_JSON_RE.test(n));
   if (names.length === 0) return legacyResult();
   names.sort((a, b) => a.split('/').length - b.split('/').length);
-  return validateManifestText(files[names[0]]);
+  return validateModuleJsonText(files[names[0]]);
 }
 
 export interface ZipValidationResult {

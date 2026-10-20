@@ -13,6 +13,8 @@ import {
   resolveWarnings,
 } from '../services/dependencyResolver';
 import { gitService } from '../services/gitService';
+import { contractColumns, slugForPublish, slugCollisionMessage, publishVersion, PublishError } from '../services/moduleVersioning';
+import { contentHashOfBuffer } from '../services/moduleInstall';
 import {
   registerWebhook,
   deleteWebhook,
@@ -78,26 +80,6 @@ function formatModuleOutput(mod: any) {
   return {
     ...mod,
     technologies: parsedTech,
-  };
-}
-
-// Map a validated contract to the persisted contract columns (all null for legacy modules)
-function contractColumns(contract: ContractValidationResult) {
-  const m = contract.manifest;
-  if (!contract.hasContract || !m) {
-    return {
-      contractVersion: null, dependsOn: null, requiredEnv: null, hostServices: null,
-      eventsPublished: null, eventsConsumed: null, permissions: null,
-    };
-  }
-  return {
-    contractVersion: contract.contractVersion,
-    dependsOn: JSON.stringify(m.dependsOn || []),
-    requiredEnv: JSON.stringify(m.requires?.env || []),
-    hostServices: JSON.stringify(m.requires?.hostServices || []),
-    eventsPublished: JSON.stringify(m.events?.publishes || []),
-    eventsConsumed: JSON.stringify(m.events?.consumes || []),
-    permissions: JSON.stringify(m.permissions || []),
   };
 }
 
@@ -462,10 +444,12 @@ modulesRouter.post('/', async (req, res) => {
 
     // Contract validation: read module.json from the stored archive (only from our own storage dir)
     let contract: ContractValidationResult = legacyResult();
+    let archiveBuffer: Buffer | null = null;
     if (storagePath && typeof storagePath === 'string') {
       const resolvedStorage = path.resolve(storagePath);
       if (resolvedStorage.startsWith(path.resolve(storageDir) + path.sep) && fs.existsSync(resolvedStorage)) {
-        contract = await validateContractInBuffer(fs.readFileSync(resolvedStorage));
+        archiveBuffer = fs.readFileSync(resolvedStorage);
+        contract = await validateContractInBuffer(archiveBuffer);
       }
     }
     if (contract.hasContract && !contract.valid) {
@@ -476,13 +460,18 @@ modulesRouter.post('/', async (req, res) => {
       });
     }
     const contractData = contractColumns(contract);
+    // A valid manifest is the source of truth for the published version
+    const publishVersionStr: string = contract.manifest?.version || version || '1.0.0';
+    const contentHash = archiveBuffer ? await contentHashOfBuffer(archiveBuffer) : null;
 
     const categoryName = category || 'Other';
     const authorName = author || 'Developer';
 
     // Generate slug from module name
-    let slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    if (!slug) slug = `module-${Date.now()}`;
+    let nameSlug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (!nameSlug) nameSlug = `module-${Date.now()}`;
+    // slug == manifest id when a valid v1 manifest exists
+    const { slug, forced: slugForced } = slugForPublish(contract, nameSlug);
 
     // Ensure category exists in DB
     await prisma.category.upsert({
@@ -497,6 +486,9 @@ modulesRouter.post('/', async (req, res) => {
     let savedModule: any = null;
     const initialCommitSha = sourceType === 'github' ? `${Date.now().toString(16).slice(-7)}` : null;
     const existing = await prisma.module.findUnique({ where: { slug } });
+    if (existing && slugForced) {
+      return res.status(409).json({ error: slugCollisionMessage(slug), slug, conflictingModuleId: existing.id });
+    }
     const repoType = sourceType === 'github' ? 'github' : (sourceType === 'moduleforge' ? 'moduleforge' : 'upload');
 
     const moduleData = {
@@ -505,7 +497,7 @@ modulesRouter.post('/', async (req, res) => {
       author: authorName,
       authorId: validAuthorId,
       categoryName,
-      version: version || '1.0.0',
+      version: publishVersionStr,
       technologies: technologiesJson,
       sourceType,
       repositoryType: repoType,
@@ -543,10 +535,11 @@ modulesRouter.post('/', async (req, res) => {
           repositoryUrl: sourceType === 'moduleforge' ? `moduleforge/${finalSlug}` : moduleData.repositoryUrl,
           versions: {
             create: {
-              version: version || '1.0.0',
+              version: publishVersionStr,
               zipStoragePath: storagePath || null,
               moduleJson: contract.manifest ? JSON.stringify(contract.manifest) : null,
               ...contractData,
+              contentHash,
             },
           },
         },
@@ -559,10 +552,11 @@ modulesRouter.post('/', async (req, res) => {
           slug,
           versions: {
             create: {
-              version: version || '1.0.0',
+              version: publishVersionStr,
               zipStoragePath: storagePath || null,
               moduleJson: contract.manifest ? JSON.stringify(contract.manifest) : null,
               ...contractData,
+              contentHash,
             },
           },
         },
@@ -608,8 +602,11 @@ modulesRouter.post('/', async (req, res) => {
   }
 });
 
-// PUT /api/modules/:id - Update Module (including Deployed URL)
-modulesRouter.put('/:id', moduleOwnerOnly, async (req, res) => {
+// PUT|PATCH /api/modules/:id - Update module metadata and/or publish a new version.
+// Body may include `storagePath` (an archive from /upload or /github) and `changelog`. When an archive or a new
+// `version` is supplied the contract columns are refreshed from it and a ModuleVersion row is created for a new
+// version; re-publishing an existing version with different content is a 409.
+const updateModuleHandler = async (req: any, res: any) => {
   try {
     const { id } = req.params;
     const {
@@ -628,6 +625,8 @@ modulesRouter.put('/:id', moduleOwnerOnly, async (req, res) => {
       backendUrl,
       workingDir,
       envVars,
+      storagePath,
+      changelog,
     } = req.body;
 
     const existing = await prisma.module.findFirst({
@@ -648,9 +647,6 @@ modulesRouter.put('/:id', moduleOwnerOnly, async (req, res) => {
     }
     if (author !== undefined && typeof author === 'string') {
       updateData.author = author.trim();
-    }
-    if (version !== undefined && typeof version === 'string') {
-      updateData.version = version.trim();
     }
     if (category !== undefined && typeof category === 'string' && category.trim()) {
       updateData.categoryName = category.trim();
@@ -690,104 +686,39 @@ modulesRouter.put('/:id', moduleOwnerOnly, async (req, res) => {
     if (backendUrl !== undefined) updateData.backendUrl = backendUrl;
     if (workingDir !== undefined) updateData.workingDir = workingDir;
 
-    const updated = await prisma.module.update({
-      where: { id: existing.id },
-      data: updateData,
-      include: { category: true },
-    });
-
-    res.json({
-      success: true,
-      module: formatModuleOutput(updated),
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// PATCH /api/modules/:id - Patch alias
-modulesRouter.patch('/:id', moduleOwnerOnly, async (req, res) => {
-  // Delegate to PUT handler logic
-  try {
-    const { id } = req.params;
-    const {
-      name,
-      description,
-      category,
-      author,
-      version,
-      technologies,
-      deployedUrl,
-      frontendCommand,
-      backendCommand,
-      frontendPort,
-      backendPort,
-      frontendUrl,
-      backendUrl,
-      workingDir,
-      envVars,
-    } = req.body;
-
-    const existing = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
-
-    if (!existing) {
-      return res.status(404).json({ error: 'Module not found' });
+    // New archive and/or version -> versioned publish (validated before the metadata update is applied)
+    let archiveBuffer: Buffer | undefined;
+    let contract: ContractValidationResult = legacyResult();
+    let zipPath: string | null = null;
+    if (storagePath !== undefined && storagePath !== null && storagePath !== '') {
+      const resolvedStorage = typeof storagePath === 'string' ? path.resolve(storagePath) : '';
+      if (!resolvedStorage.startsWith(path.resolve(storageDir) + path.sep) || !fs.existsSync(resolvedStorage)) {
+        return res.status(400).json({ error: 'storagePath must be an archive uploaded through /api/modules/upload' });
+      }
+      archiveBuffer = fs.readFileSync(resolvedStorage);
+      zipPath = resolvedStorage;
+      contract = await validateContractInBuffer(archiveBuffer);
     }
-
-    const updateData: any = {};
-
-    if (name !== undefined && typeof name === 'string' && name.trim()) {
-      updateData.name = name.trim();
-    }
-    if (description !== undefined && typeof description === 'string' && description.trim()) {
-      updateData.description = description.trim();
-    }
-    if (author !== undefined && typeof author === 'string') {
-      updateData.author = author.trim();
-    }
-    if (version !== undefined && typeof version === 'string') {
-      updateData.version = version.trim();
-    }
-    if (category !== undefined && typeof category === 'string' && category.trim()) {
-      updateData.categoryName = category.trim();
-      await prisma.category.upsert({
-        where: { name: updateData.categoryName },
-        update: {},
-        create: { name: updateData.categoryName, slug: updateData.categoryName.toLowerCase().replace(/[^a-z0-9]/g, '-') },
-      });
-    }
-    if (technologies !== undefined) {
-      updateData.technologies = JSON.stringify(Array.isArray(technologies) ? technologies : []);
-    }
-    if (envVars !== undefined) {
-      updateData.envVars = JSON.stringify(Array.isArray(envVars) ? envVars : (typeof envVars === 'string' ? envVars.split(',').map((s: string) => s.trim()).filter(Boolean) : []));
-    }
-
-    if (deployedUrl !== undefined) {
-      if (deployedUrl === null || deployedUrl === '') {
-        updateData.deployedUrl = null;
-      } else if (typeof deployedUrl === 'string') {
-        const trimmed = deployedUrl.trim();
-        if (trimmed === '') {
-          updateData.deployedUrl = null;
-        } else if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-          return res.status(400).json({ error: 'Deployed link must be a valid URL starting with http:// or https://' });
-        } else {
-          updateData.deployedUrl = trimmed;
+    const requestedVersion = typeof version === 'string' && version.trim() ? version.trim() : undefined;
+    const versionChanging = !!requestedVersion && requestedVersion !== existing.version;
+    let publish: Awaited<ReturnType<typeof publishVersion>> | null = null;
+    if (archiveBuffer || versionChanging) {
+      try {
+        publish = await publishVersion(existing, {
+          contract,
+          buffer: archiveBuffer,
+          zipPath,
+          version: requestedVersion,
+          changelog: typeof changelog === 'string' ? changelog : null,
+        });
+      } catch (e: any) {
+        if (e instanceof PublishError) {
+          return res.status(e.status).json({ error: e.message, ...(e.details || {}) });
         }
+        throw e;
       }
     }
 
-    if (frontendCommand !== undefined) updateData.frontendCommand = frontendCommand;
-    if (backendCommand !== undefined) updateData.backendCommand = backendCommand;
-    if (frontendPort !== undefined) updateData.frontendPort = Number(frontendPort) || 5173;
-    if (backendPort !== undefined) updateData.backendPort = Number(backendPort) || 5000;
-    if (frontendUrl !== undefined) updateData.frontendUrl = frontendUrl;
-    if (backendUrl !== undefined) updateData.backendUrl = backendUrl;
-    if (workingDir !== undefined) updateData.workingDir = workingDir;
-
     const updated = await prisma.module.update({
       where: { id: existing.id },
       data: updateData,
@@ -797,11 +728,16 @@ modulesRouter.patch('/:id', moduleOwnerOnly, async (req, res) => {
     res.json({
       success: true,
       module: formatModuleOutput(updated),
+      version: publish?.version ?? updated.version,
+      versionCreated: publish?.versionCreated ?? false,
+      warnings: publish ? contract.warnings : [],
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+};
+modulesRouter.put('/:id', moduleOwnerOnly, updateModuleHandler);
+modulesRouter.patch('/:id', moduleOwnerOnly, updateModuleHandler);
 
 // GET /api/modules/:id/download - Download single module ZIP archive
 modulesRouter.get('/:id/download', async (req, res) => {
@@ -1033,16 +969,36 @@ modulesRouter.post('/:id/sync', moduleOwnerOnly, async (req, res) => {
       return res.status(400).json({ error: zipValidation.error || 'Invalid repository archive' });
     }
 
+    // Refresh the contract from the new archive; a v1 manifest that fails validation is rejected
+    const syncContract = zipValidation.contract || legacyResult();
+    if (syncContract.hasContract && !syncContract.valid) {
+      await prisma.module.update({ where: { id: module.id }, data: { githubSyncStatus: 'sync_failed' } });
+      return res.status(400).json({ error: 'module.json is invalid', errors: syncContract.errors, warnings: syncContract.warnings });
+    }
+
     // Save archive to disk
     const zipFileName = `github-${owner}-${repo}-${Date.now()}.zip`;
     const permanentPath = path.join(storageDir, zipFileName);
     fs.writeFileSync(permanentPath, archiveBuffer);
 
+    // Versioned publish: new ModuleVersion when the manifest version changed; 409 when an existing version changed content
+    let publish: Awaited<ReturnType<typeof publishVersion>>;
+    try {
+      publish = await publishVersion(module, { contract: syncContract, buffer: archiveBuffer, zipPath: permanentPath });
+    } catch (e: any) {
+      try { fs.unlinkSync(permanentPath); } catch (_) {}
+      if (e instanceof PublishError) {
+        await prisma.module.update({ where: { id: module.id }, data: { githubSyncStatus: 'sync_failed' } });
+        return res.status(e.status).json({ error: e.message, ...(e.details || {}) });
+      }
+      throw e;
+    }
+
     // Update module in DB
     const updatedModule = await prisma.module.update({
       where: { id: module.id },
       data: {
-        zipStoragePath: permanentPath,
+        zipStoragePath: publish.version && publish.module.version !== publish.version ? publish.module.zipStoragePath : permanentPath,
         githubCurrentCommit: latestCommitSha,
         githubLatestCommit: latestCommitSha,
         githubLastSyncedAt: new Date(),
@@ -1064,6 +1020,9 @@ modulesRouter.post('/:id/sync', moduleOwnerOnly, async (req, res) => {
     res.json({
       success: true,
       message: 'Module synchronized successfully',
+      version: publish.version ?? updatedModule.version,
+      versionCreated: publish.versionCreated,
+      warnings: syncContract.warnings,
       module: formatModuleOutput(updatedModule),
       syncLog,
     });

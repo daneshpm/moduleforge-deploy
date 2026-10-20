@@ -8,7 +8,38 @@ import {
   ModuleForgeManifest,
 } from '../types';
 
+export interface ModuleUpdateInfo {
+  projectModuleId: string;
+  moduleId: string;
+  slug: string;
+  name: string;
+  path: string | null;
+  installed: string;
+  latest: string | null;
+  pinnedRange: string | null;
+  latestSatisfyingPinnedRange: string | null;
+  updateAvailable: boolean;
+  breaking: boolean;
+  changelog: string | null;
+}
+
+export interface UpgradePlan {
+  from?: string;
+  to?: string;
+  breaking?: boolean;
+  upToDate?: boolean;
+  blocked?: boolean;
+  error?: string;
+  files?: { added: string[]; changed: string[]; removed: string[]; preserved: string[]; unchangedCount: number };
+  conflicts?: Array<{ path: string; kind: string; requiredBy?: string; reason?: string }>;
+  missing?: Array<{ id: string; versionRange: string; requiredBy: string }>;
+  details?: string[];
+  warnings?: string[];
+  changelog?: string | null;
+}
+
 interface ProjectRepoState {
+  updates: ModuleUpdateInfo[];
   hasRepository: boolean;
   repository: ProjectRepository | null;
   status: GitStatusResult | null;
@@ -72,9 +103,18 @@ interface ProjectRepoState {
   ) => Promise<{ success: boolean; error?: string }>;
   setActiveFileContent: (content: string) => void;
   clearMessages: () => void;
+  fetchUpdates: (projectId: string) => Promise<void>;
+  /** Dry run: returns the plan (or the 409 blocking details) without writing anything. */
+  previewUpgrade: (projectId: string, pmId: string, toVersion?: string) => Promise<UpgradePlan>;
+  applyUpgrade: (
+    projectId: string,
+    pmId: string,
+    opts?: { toVersion?: string; force?: boolean }
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const useProjectRepoStore = create<ProjectRepoState>((set, get) => ({
+  updates: [],
   hasRepository: false,
   repository: null,
   status: null,
@@ -483,4 +523,40 @@ export const useProjectRepoStore = create<ProjectRepoState>((set, get) => ({
   },
 
   clearMessages: () => set({ errorMessage: null, successMessage: null }),
+
+  fetchUpdates: async (projectId) => {
+    try {
+      const res = await axios.get(`/api/projects/${projectId}/updates`);
+      set({ updates: res.data.updates || [] });
+    } catch {
+      set({ updates: [] });
+    }
+  },
+
+  previewUpgrade: async (projectId, pmId, toVersion) => {
+    try {
+      const res = await axios.post(`/api/projects/${projectId}/modules/${pmId}/upgrade`, { toVersion, dryRun: true });
+      return res.data as UpgradePlan;
+    } catch (e: any) {
+      // a 409 carries the dependency / local-edit conflict details
+      const data = e.response?.data;
+      return { ...(data || {}), blocked: true, error: data?.error || e.message || 'Upgrade check failed' };
+    }
+  },
+
+  applyUpgrade: async (projectId, pmId, opts = {}) => {
+    try {
+      set({ isIngesting: true, errorMessage: null, successMessage: null });
+      const res = await axios.post(`/api/projects/${projectId}/modules/${pmId}/upgrade`, opts);
+      set({ isIngesting: false, successMessage: `Upgraded to v${res.data.to}` });
+      await get().fetchRepoOverview(projectId);
+      await get().fetchFileTree(projectId);
+      await get().fetchUpdates(projectId);
+      return { success: true };
+    } catch (e: any) {
+      const err = e.response?.data?.error || e.message || 'Upgrade failed';
+      set({ isIngesting: false, errorMessage: err });
+      return { success: false, error: err };
+    }
+  },
 }));
