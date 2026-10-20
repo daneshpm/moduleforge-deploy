@@ -86,6 +86,12 @@ app.use('/api/notifications', authenticate, notificationsRouter);
 app.use('/api/modules', authenticateUnlessGet, modulesRouter);
 app.use('/api/projects', authenticate, projectsRouter);
 app.use('/api/presence', authenticate, presenceRouter);
+// Chat / DM / calls / meetings: each router applies authenticate itself (router.use) and enforces per-resource access.
+// The client calls direct chats under /api/chats.
+app.use('/api/channels', channelsRouter);
+app.use('/api/chats', directChatsRouter);
+app.use('/api/calls', callsRouter);
+app.use('/api/meetings', meetingsRouter);
 // GitHub webhook: no user auth; protected by mandatory HMAC signature (GITHUB_WEBHOOK_SECRET)
 app.use('/api/webhooks', webhooksRouter);
 
