@@ -7,7 +7,14 @@ import axios from 'axios';
 import { prisma } from '../prisma';
 import { gitService } from '../services/gitService';
 import { projectRepoService } from '../services/projectRepoService';
-import { validateZipBuffer } from '../validator';
+import { validateZipBuffer, validateContractInZip, LEGACY_WARNING, ContractValidationResult } from '../validator';
+import {
+  resolve as resolveDependencies,
+  candidateFromModule,
+  projectModuleRefsFromRows,
+  resolveWarnings,
+  CandidateModule,
+} from '../services/dependencyResolver';
 
 import { projectMemberParam, projectOwnerOnly } from '../middleware/access';
 
@@ -26,6 +33,32 @@ const upload = multer({
   dest: tempUploadDir,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
 });
+
+// Non-blocking contract/dependency warnings returned by the import flows
+async function importWarnings(
+  projectId: string,
+  candidate: CandidateModule | null,
+  contract?: ContractValidationResult
+): Promise<string[]> {
+  const warnings: string[] = [...(contract?.warnings || [])];
+  if (contract && !contract.valid) {
+    warnings.push(...contract.errors.map((e) => `module.json ${e.path}: ${e.message}`));
+  }
+  try {
+    if (candidate) {
+      const rows = await prisma.projectModule.findMany({ where: { projectId }, include: { module: true } });
+      warnings.push(...resolveWarnings(resolveDependencies(projectModuleRefsFromRows(rows), candidate)));
+    }
+  } catch (e) {
+    // warnings must never block an import
+  }
+  return warnings;
+}
+
+function candidateFromContract(contract?: ContractValidationResult): CandidateModule | null {
+  const m = contract?.manifest;
+  return m ? { id: m.id, version: m.version, dependsOn: m.dependsOn || [] } : null;
+}
 
 // Helper to resolve Project & its repo directory
 async function resolveProject(projectId: string) {
@@ -593,8 +626,10 @@ projectRepositoryRouter.post(
         },
       });
 
+      const warnings = await importWarnings(project.id, candidateFromContract(validation.contract), validation.contract);
       res.json({
         success: true,
+        warnings,
         message: `Successfully added ${name} module (${ingestResult.fileCount} files) to ${targetDest}`,
         commit: ingestResult.commit,
         manifest: ingestResult.manifest,
@@ -760,8 +795,11 @@ projectRepositoryRouter.post(
         },
       });
 
+      const ghContract = await validateContractInZip(zip);
+      const warnings = await importWarnings(project.id, candidateFromContract(ghContract), ghContract);
       res.json({
         success: true,
+        warnings,
         message: `Successfully imported GitHub module ${owner}/${repo} to ${targetDest}`,
         commit: ingestResult.commit,
         manifest: ingestResult.manifest,
@@ -912,8 +950,11 @@ projectRepositoryRouter.post(
         },
       });
 
+      const warnings = (mod as any).contractVersion ? [] : [LEGACY_WARNING];
+      warnings.push(...(await importWarnings(project.id, candidateFromModule(mod, version))));
       res.json({
         success: true,
+        warnings,
         message: `Added ${mod.name} v${version} to ${targetDest}`,
         commit: ingestResult.commit,
         manifest: ingestResult.manifest,

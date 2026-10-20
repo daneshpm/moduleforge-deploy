@@ -155,7 +155,8 @@ export const useModuleStore = create<ModuleState>((set, get) => ({
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to save module');
+        const detail = Array.isArray(data.errors) ? ': ' + data.errors.map((e: any) => `${e.path} ${e.message}`).join('; ') : '';
+        throw new Error((data.error || 'Failed to save module') + detail);
       }
 
       get().fetchModules();
