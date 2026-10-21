@@ -49,6 +49,16 @@ test('permissions and events must be namespaced with the module id', () => {
   assert.deepEqual(r.errors.map((e) => e.path).sort(), ['/events/publishes/0', '/permissions/0']);
 });
 
+test('well-known platform events may be published by any module, other cross-module events may not', () => {
+  const m = clone();
+  m.events.publishes = ['invoice.created', 'payment.received', 'payment.failed'];
+  assert.deepEqual(validateManifestObject(m).errors, []);
+  m.events.publishes = ['payment.refunded', 'billing.paid'];
+  assert.deepEqual(validateManifestObject(m).errors.map((e) => e.path), ['/events/publishes/0', '/events/publishes/1']);
+  m.events.publishes = ['payment_method.added'];
+  assert.equal(validateManifestObject(m).valid, false);
+});
+
 test('invalid semver ranges and self dependency are rejected', () => {
   const m = clone();
   m.dependsOn = [{ id: 'invoice', versionRange: 'not-a-range' }];

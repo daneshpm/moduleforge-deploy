@@ -2,7 +2,7 @@
   "name": "moduleforge-reference-modules",
   "private": true,
   "type": "module",
-  "description": "Reference ModuleForge modules (payment-method, invoice, notification-adapter) plus a demo host.",
+  "description": "Reference ModuleForge modules (payment-method, invoice, payment-gateway, notification-adapter) plus a demo host.",
   "scripts": {
     "test": "node --disable-warning=ExperimentalWarning --import tsx --test \"*/test/*.test.ts\"",
     "typecheck": "tsc --noEmit",
