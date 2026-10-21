@@ -132,6 +132,10 @@
   "definitions": {
     "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
     "permission": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" },
+    "wellKnownPlatformEvents": {
+      "description": "Cross-module platform events any module may publish in addition to its own '<module_id>.*' events. Single source of truth read by server/src/validator.ts.",
+      "enum": ["payment.received", "payment.failed"]
+    },
     "eventName": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$" }
   }
 }

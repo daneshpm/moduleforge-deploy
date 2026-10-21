@@ -11,7 +11,7 @@ schema is [`shared/module.schema.json`](../shared/module.schema.json); validatio
    - **Events** (`events.publishes` / `events.consumes`): named, namespaced messages delivered by the host event bus.
 2. `dependsOn` declares that another module must be *present in the project* (so its events/services exist). It is never a code import.
 3. Everything a module needs from the outside (env vars, DB tables, permissions) is declared, so it can be checked before import.
-4. Namespacing: permissions, published events and DB tables are prefixed with the module `id`, so modules cannot collide.
+4. Namespacing: permissions, published events and DB tables are prefixed with the module `id`, so modules cannot collide. The only exception is the small closed list of well-known platform events (`payment.received`, `payment.failed`), which any module may publish.
 
 ## Fields
 
@@ -31,8 +31,8 @@ schema is [`shared/module.schema.json`](../shared/module.schema.json); validatio
 | `provides.uiExports[]` | `{ name, kind?, path? }` | no | kind: component, page, hook, widget |
 | `requires.env[]` | `{ name, description?, secret? }` | no | `name` is `UPPER_SNAKE`; no duplicates |
 | `requires.database` | `{ tables[], prefix }` | no | Omit entirely when the module has no tables. prefix like `invoice_`; every table must start with it |
-| `requires.hostServices[]` | string | no | Known: `auth.currentUser`, `db`, `notifications`, `storage`, `email`, `events`, `logger` (unknown = warning) |
-| `events.publishes[]` | `<module_id_with_underscores>.<event>` (`^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`) | no | Must start with the own module id with hyphens converted to underscores, then `.` (e.g. `payment-method` publishes `payment_method.added`) |
+| `requires.hostServices[]` | string | no | Known: `auth.currentUser`, `db`, `notifications`, `storage`, `email`, `events`, `logger`, `config` (unknown = warning) |
+| `events.publishes[]` | `<module_id_with_underscores>.<event>` (`^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`) | no | Must start with the own module id with hyphens converted to underscores, then `.` (e.g. `payment-method` publishes `payment_method.added`). Exception: the **well-known platform events** `payment.received` and `payment.failed` (list in `definitions.wellKnownPlatformEvents` of the schema) may be published by any module, so a payment gateway can emit the event the invoice module consumes without importing it |
 | `events.consumes[]` | `<module>.<event>` (same pattern) | no | Any valid event name; cross-module by design |
 | `permissions[]` | `<module>.<resource>.<action>` | no | Must start with own `id.` |
 | `runtime` | `{ frontendCommand, backendCommand, workingDir, ports{frontend,backend} }` | no | Commands may be a string or `null`, and `ports` may be omitted: library-style modules mounted into a host have no process. Maps to Module columns `frontendCommand`, `backendCommand`, `workingDir`, `frontendPort`, `backendPort` |

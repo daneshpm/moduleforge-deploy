@@ -9,7 +9,7 @@ import semver from 'semver';
 export const CONTRACT_VERSION = '1';
 export const LEGACY_WARNING = 'legacy: no contract';
 /** Host services a module may declare in requires.hostServices. Unknown names only produce a warning. */
-export const KNOWN_HOST_SERVICES = ['auth.currentUser', 'db', 'notifications', 'storage', 'email', 'events', 'logger'];
+export const KNOWN_HOST_SERVICES = ['auth.currentUser', 'db', 'notifications', 'storage', 'email', 'events', 'logger', 'config'];
 
 export interface ContractIssue {
   path: string;
@@ -40,6 +40,10 @@ function loadSchema(): any {
     if (fs.existsSync(c)) return JSON.parse(fs.readFileSync(c, 'utf8'));
   }
   throw new Error('shared/module.schema.json not found');
+}
+let cachedDefinitions: any = null;
+function getSchemaDefinitions(): any {
+  return (cachedDefinitions ??= loadSchema().definitions);
 }
 function getSchemaValidator() {
   if (!cachedValidate) {
@@ -80,9 +84,12 @@ export function validateManifestObject(manifest: any): ContractValidationResult 
     if (!p.startsWith(`${id}.`)) err(`/permissions/${i}`, `permission "${p}" must be namespaced with the module id "${id}."`);
   });
   // Event names are `<module_id_with_underscores>.<event>`; only publishes is constrained, consumes may be cross-module.
+  // Exception: the schema's `wellKnownPlatformEvents` (payment.received, payment.failed) may be published by any module,
+  // so a payment gateway can emit the event the invoice module consumes without importing it.
+  const platformEvents: string[] = getSchemaDefinitions()?.wellKnownPlatformEvents?.enum ?? [];
   const eventPrefix = `${id.replace(/-/g, '_')}.`;
   (manifest.events?.publishes || []).forEach((p: string, i: number) => {
-    if (!p.startsWith(eventPrefix)) err(`/events/publishes/${i}`, `published event "${p}" must start with the module id (hyphens as underscores) "${eventPrefix}"`);
+    if (!p.startsWith(eventPrefix) && !platformEvents.includes(p)) err(`/events/publishes/${i}`, `published event "${p}" must start with the module id (hyphens as underscores) "${eventPrefix}" or be a well-known platform event (${platformEvents.join(', ')})`);
   });
   (manifest.events?.consumes || []).forEach((p: string, i: number) => {
     if (p.startsWith(eventPrefix)) warnings.push(`events.consumes[${i}]: module consumes its own event "${p}"`);

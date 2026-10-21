@@ -1,0 +1,47 @@
+{
+  "id": "payment-gateway",
+  "name": "Payment Gateway",
+  "version": "1.0.0",
+  "description": "Turns a real payment into the platform payment.received event: hosted checkout sessions (Stripe or mock), signed + idempotent webhook handling, amount/currency validation against the stored session.",
+  "type": "backend",
+  "category": "Payments",
+  "dependsOn": [],
+  "provides": {
+    "apiPrefix": "/api/payment-gateway",
+    "routes": [
+      { "method": "POST", "path": "/api/payment-gateway/checkout", "permission": "payment-gateway.session.create" },
+      { "method": "GET", "path": "/api/payment-gateway/sessions", "permission": "payment-gateway.session.read" },
+      { "method": "POST", "path": "/api/payment-gateway/webhook", "description": "Provider webhook. Raw body, no user auth; authenticated by signature.", "permission": "payment-gateway.webhook.receive" }
+    ]
+  },
+  "requires": {
+    "env": [
+      { "name": "STRIPE_SECRET_KEY", "description": "Stripe secret API key (sk_...)", "secret": true },
+      { "name": "STRIPE_WEBHOOK_SECRET", "description": "Stripe webhook signing secret (whsec_...)", "secret": true },
+      { "name": "PAYMENT_SUCCESS_URL", "description": "Where the provider sends the buyer after paying", "secret": false },
+      { "name": "PAYMENT_CANCEL_URL", "description": "Where the provider sends the buyer after cancelling", "secret": false },
+      { "name": "PAYMENT_GATEWAY_PROVIDER", "description": "Checkout provider adapter: stripe (default) | mock", "secret": false }
+    ],
+    "database": {
+      "tables": ["pg_sessions", "pg_webhook_events"],
+      "prefix": "pg_"
+    },
+    "hostServices": ["db", "events", "auth.currentUser", "config"]
+  },
+  "events": {
+    "publishes": [
+      "payment_gateway.payment_succeeded",
+      "payment_gateway.payment_failed",
+      "payment.received",
+      "payment.failed"
+    ],
+    "consumes": []
+  },
+  "permissions": [
+    "payment-gateway.session.create",
+    "payment-gateway.session.read",
+    "payment-gateway.webhook.receive"
+  ],
+  "runtime": { "frontendCommand": null, "backendCommand": null },
+  "compatibility": { "moduleforge": ">=1.0.0" }
+}
