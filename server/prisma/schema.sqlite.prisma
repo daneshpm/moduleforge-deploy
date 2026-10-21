@@ -1,0 +1,580 @@
+// AUTO-GENERATED from schema.prisma by scripts/make-sqlite-schema.js — DO NOT EDIT.
+// Used for local dev and tests (SQLite). Edit schema.prisma, then run: npm run db:sqlite-schema
+// Prisma Schema for ModuleForge Platform
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+
+model User {
+  id                  String           @id @default(uuid())
+  googleId            String?          @unique
+  email               String           @unique
+  name                String?
+  username            String?          @unique
+  avatarUrl           String?
+  isDev               Boolean          @default(false)
+  lastLogin           DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  modules             Module[]         @relation("UserModules")
+  projects            Project[]        @relation("UserProjects")
+  projectMembers      ProjectMember[]
+  ownedTeams          Team[]           @relation("TeamOwner")
+  teamMemberships     TeamMember[]
+  sentInvitations     TeamInvitation[] @relation("SentInvitations")
+  receivedInvitations TeamInvitation[] @relation("ReceivedInvitations")
+  notifications       Notification[]
+  channelsCreated     Channel[]        @relation("ChannelCreator")
+  channelMessages     ChannelMessage[] @relation("UserChannelMessages")
+  directChatMemberships DirectChatParticipant[]
+  directMessages      DirectMessage[]  @relation("UserDirectMessages")
+  callsInitiated      CallSession[]    @relation("CallsInitiated")
+  callsReceived       CallSession[]    @relation("CallsReceived")
+  meetingsCreated     Meeting[]        @relation("MeetingsCreated")
+  meetingParticipations MeetingParticipant[]
+  meetingMessages     MeetingMessage[] @relation("UserMeetingMessages")
+  presence            UserPresence?
+
+  @@index([username])
+  @@index([email])
+}
+
+model Team {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  avatarUrl   String?
+  ownerId     String
+  owner       User             @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  members     TeamMember[]
+  invitations TeamInvitation[]
+  projects    Project[]
+  notifications Notification[]
+  channels    Channel[]
+  meetings    Meeting[]
+
+  @@index([ownerId])
+}
+
+model TeamMember {
+  id       String   @id @default(uuid())
+  teamId   String
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     String   @default("member") // "owner" | "admin" | "member"
+  joinedAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+}
+
+model TeamInvitation {
+  id            String         @id @default(uuid())
+  teamId        String
+  team          Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  inviterId     String
+  inviter       User           @relation("SentInvitations", fields: [inviterId], references: [id])
+  inviteeUserId String?
+  inviteeUser   User?          @relation("ReceivedInvitations", fields: [inviteeUserId], references: [id])
+  inviteeEmail  String?
+  role          String         @default("member") // "admin" | "member"
+  token         String         @unique
+  status        String         @default("pending") // "pending" | "accepted" | "declined" | "expired"
+  expiresAt     DateTime
+  createdAt     DateTime       @default(now())
+  acceptedAt    DateTime?
+  notifications Notification[]
+
+  @@index([teamId])
+  @@index([inviterId])
+  @@index([inviteeUserId])
+  @@index([inviteeEmail])
+  @@index([token])
+  @@index([status])
+}
+
+model Notification {
+  id                  String          @id @default(uuid())
+  userId              String
+  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                String          // "team_invitation" | "invitation_accepted" | "invitation_declined" | "member_removed" | "team_meeting" | "system"
+  title               String
+  message             String
+  relatedTeamId       String?
+  relatedTeam         Team?           @relation(fields: [relatedTeamId], references: [id], onDelete: SetNull)
+  relatedInvitationId String?
+  relatedInvitation   TeamInvitation? @relation(fields: [relatedInvitationId], references: [id], onDelete: SetNull)
+  relatedMeetingId    String?
+  relatedMeeting      Meeting?        @relation(fields: [relatedMeetingId], references: [id], onDelete: SetNull)
+  read                Boolean         @default(false)
+  createdAt           DateTime        @default(now())
+
+  @@index([userId])
+  @@index([read])
+  @@index([relatedTeamId])
+  @@index([relatedInvitationId])
+  @@index([relatedMeetingId])
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  icon        String?
+  modules     Module[]
+}
+
+model Module {
+  id                  String          @id @default(uuid())
+  slug                String          @unique
+  name                String
+  description         String
+  author              String
+  categoryName        String
+  category            Category        @relation(fields: [categoryName], references: [name])
+  version             String          @default("1.0.0")
+  technologies        String?         @default("[]") // JSON array string of technologies (e.g. ["React","Node.js"])
+  sourceType          String          // "upload" | "github" | "moduleforge"
+  repositoryType      String?         @default("upload") // "moduleforge" | "github" | "upload"
+  repositoryUrl       String?
+  repositoryPath      String?
+  defaultBranch       String?         @default("main")
+  githubUrl           String?
+  githubOwner         String?
+  githubRepo          String?
+  githubBranch        String?         @default("main")
+  githubCurrentCommit String?
+  githubLatestCommit  String?
+  githubLastSyncedAt  DateTime?
+  githubSyncStatus    String?         @default("synced") // "synced" | "update_available" | "sync_failed" | "not_connected"
+  githubWebhookId     String?
+  // Module Runtime Configuration fields
+  frontendCommand     String?         @default("npm run dev")
+  backendCommand      String?         @default("")
+  frontendPort        Int?            @default(5173)
+  backendPort         Int?            @default(5000)
+  frontendUrl         String?         @default("http://localhost:5173")
+  backendUrl          String?         @default("http://localhost:5000")
+  workingDir          String?         @default(".")
+  envVars             String?         @default("[]") // JSON string array of required env var names
+  zipStoragePath      String?
+  moduleJson          String?         // Optional JSON string if module.json is present
+  // Module contract (moduleforge manifest v1); null contractVersion = legacy module
+  contractVersion     String?
+  dependsOn           String?         // JSON [{id, versionRange}]
+  requiredEnv         String?         // JSON [{name, description, secret}]
+  hostServices        String?         // JSON string[]
+  eventsPublished     String?         // JSON string[]
+  eventsConsumed      String?         // JSON string[]
+  permissions         String?         // JSON string[]
+  downloads           Int             @default(0)
+  deployedUrl         String?
+  isPublished         Boolean         @default(true)
+  authorId            String?
+  authorUser          User?           @relation("UserModules", fields: [authorId], references: [id])
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  versions            ModuleVersion[]
+  projectModules      ProjectModule[]
+  syncLogs            ModuleSync[]
+
+  @@index([slug])
+  @@index([categoryName])
+  @@index([author])
+}
+
+model ModuleSync {
+  id            String   @id @default(uuid())
+  moduleId      String
+  module        Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  commitSha     String
+  commitMessage String?
+  author        String?
+  status        String   @default("synced") // "synced" | "failed"
+  syncedAt      DateTime @default(now())
+
+  @@index([moduleId])
+  @@index([syncedAt])
+}
+
+model ModuleVersion {
+  id             String   @id @default(uuid())
+  moduleId       String
+  module         Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  version        String
+  moduleJson     String?
+  contractVersion String?
+  dependsOn       String?
+  requiredEnv     String?
+  hostServices    String?
+  eventsPublished String?
+  eventsConsumed  String?
+  permissions     String?
+  zipStoragePath String?
+  changelog      String?
+  contentHash    String?  // sha256 over the archive's file paths + contents (re-publish guard)
+  createdAt      DateTime @default(now())
+
+  @@unique([moduleId, version])
+  @@index([moduleId])
+}
+
+model Project {
+  id               String            @id @default(uuid())
+  name             String
+  description      String?
+  userId           String?
+  user             User?             @relation("UserProjects", fields: [userId], references: [id])
+  teamId           String?
+  team             Team?             @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  projectType      String            @default("individual") // "individual" | "team"
+  visibility       String            @default("private")    // "private" | "public"
+  joinCode         String?           @unique                // e.g. "MF-8A2F1C"
+  canvasConfig     String?           // JSON string of canvas state (zoom, pan, etc)
+  gitRepositoryUrl String?
+  gitOwner         String?
+  gitRepo          String?
+  gitBranch        String?           @default("main")
+  currentCommitSha String?
+  lastSyncedAt     DateTime?
+  syncStatus       String?           @default("synced") // "synced" | "updating" | "failed"
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  modules          ProjectModule[]
+  members          ProjectMember[]
+  activities       ProjectActivity[]
+  exports          GeneratedExport[]
+  channels         Channel[]
+  meetings         Meeting[]
+  repository       Repository?
+
+  @@index([userId])
+  @@index([teamId])
+  @@index([joinCode])
+}
+
+model Repository {
+  id            String   @id @default(uuid())
+  projectId     String   @unique
+  provider      String   @default("github")
+  externalId    String?
+  owner         String
+  name          String
+  url           String
+  defaultBranch String   @default("main")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model ProjectMember {
+  id          String    @id @default(uuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id])
+  name        String?
+  email       String
+  role        String    @default("developer") // "owner" | "developer" | "viewer"
+  status      String    @default("pending")   // "pending" | "accepted" | "rejected"
+  inviteToken String?   @unique
+  invitedAt   DateTime  @default(now())
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([projectId])
+  @@index([email])
+  @@index([inviteToken])
+}
+
+model ProjectModule {
+  id               String             @id @default(uuid())
+  projectId        String
+  project          Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  moduleId         String
+  module           Module             @relation(fields: [moduleId], references: [id])
+  moduleVersion    String             // exact installed module version
+  installedContractId String?         // manifest id at install time (null for legacy modules)
+  pinnedRange      String?            // semver range requested at install, e.g. "^1.0.0"
+  installedAt      DateTime?
+  installedHash    String?            // sha256 over installedFiles (local-edit baseline)
+  installedFiles   String?            // JSON {relativePath: sha256} written at install time
+  xPosition        Float              @default(0)
+  yPosition        Float              @default(0)
+  configuration    String?            // JSON configuration string
+  ownerName        String?            // Assigned developer name (e.g. "Shalya")
+  ownerEmail       String?
+  repositoryType   String?            @default("moduleforge") // "moduleforge" | "github" | "upload"
+  repositoryPath   String?
+  currentBranch    String?            @default("main")
+  gitStatus        String?            @default("up_to_date") // "up_to_date" | "changes_available" | "local_changes" | "conflict"
+  githubRepository String?            // e.g. "company/crm"
+  githubBranch     String?            @default("main")
+  currentCommitSha String?
+  lastCommitMessage String?
+  lastCommitAuthor String?
+  lastSyncedAt     DateTime?
+  deploymentUrl    String?
+  deploymentStatus String?            @default("synced") // "synced" | "updating" | "failed"
+  createdAt        DateTime           @default(now())
+  deployments      ModuleDeployment[]
+  commits          ModuleCommit[]
+
+  @@index([projectId])
+  @@index([moduleId])
+}
+
+model ModuleCommit {
+  id              String         @id @default(uuid())
+  moduleId        String
+  projectModuleId String?
+  projectModule   ProjectModule? @relation(fields: [projectModuleId], references: [id], onDelete: Cascade)
+  commitSha       String
+  message         String
+  author          String
+  branch          String         @default("main")
+  changedFiles    String?        @default("[]") // JSON string array
+  createdAt       DateTime       @default(now())
+
+  @@index([moduleId])
+  @@index([projectModuleId])
+  @@index([createdAt])
+}
+
+model ModuleDeployment {
+  id              String        @id @default(uuid())
+  projectModuleId String
+  projectModule   ProjectModule @relation(fields: [projectModuleId], references: [id], onDelete: Cascade)
+  commitSha       String
+  commitMessage   String?
+  author          String?
+  deploymentUrl   String?
+  status          String        @default("success") // "success" | "failed" | "building"
+  buildLogs       String?
+  createdAt       DateTime      @default(now())
+
+  @@index([projectModuleId])
+  @@index([createdAt])
+}
+
+model ProjectActivity {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  moduleName  String?
+  action      String   // e.g. "updated", "deployed", "build_failed", "member_invited", "committed", "pushed", "pulled"
+  actorName   String?
+  description String
+  commitSha   String?
+  status      String   @default("synced") // "synced" | "updating" | "failed"
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@index([createdAt])
+}
+
+model GeneratedExport {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  zipFileName String
+  zipPath     String
+  createdAt   DateTime @default(now())
+}
+
+// ── Communication & Calling System Models ───────────────────────────────────
+
+model Channel {
+  id          String           @id @default(uuid())
+  name        String           // e.g. "general", "dev-backend", "design"
+  description String?
+  type        String           @default("text") // "text" | "voice" | "video"
+  isPrivate   Boolean          @default(false)
+  teamId      String?
+  team        Team?            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdById String?
+  creator     User?            @relation("ChannelCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  messages    ChannelMessage[]
+  meetings    Meeting[]
+
+  @@index([teamId])
+  @@index([projectId])
+  @@index([type])
+}
+
+model ChannelMessage {
+  id          String   @id @default(uuid())
+  channelId   String
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  senderId    String
+  sender      User     @relation("UserChannelMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  text        String
+  attachments String?  @default("[]") // JSON string of attachments [{ name, url, type, size }]
+  pinned      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([channelId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model DirectChat {
+  id           String                  @id @default(uuid())
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+  participants DirectChatParticipant[]
+  messages     DirectMessage[]
+  calls        CallSession[]
+}
+
+model DirectChatParticipant {
+  id         String     @id @default(uuid())
+  chatId     String
+  chat       DirectChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt DateTime   @default(now())
+  joinedAt   DateTime   @default(now())
+
+  @@unique([chatId, userId])
+  @@index([chatId])
+  @@index([userId])
+}
+
+model DirectMessage {
+  id          String     @id @default(uuid())
+  chatId      String
+  chat        DirectChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderId    String
+  sender      User       @relation("UserDirectMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  text        String
+  attachments String?    @default("[]")
+  read        Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([chatId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model CallSession {
+  id          String      @id @default(uuid())
+  type        String      @default("voice") // "voice" | "video"
+  callerId    String
+  caller      User        @relation("CallsInitiated", fields: [callerId], references: [id], onDelete: Cascade)
+  receiverId  String?
+  receiver    User?       @relation("CallsReceived", fields: [receiverId], references: [id], onDelete: Cascade)
+  chatId      String?
+  chat        DirectChat? @relation(fields: [chatId], references: [id], onDelete: SetNull)
+  roomId      String
+  status      String      @default("CALLING") // "CALLING" | "RINGING" | "CONNECTED" | "ENDED" | "DECLINED" | "MISSED"
+  startedAt   DateTime?
+  endedAt     DateTime?
+  duration    Int?        @default(0) // seconds
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([callerId])
+  @@index([receiverId])
+  @@index([roomId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Meeting {
+  id                 String               @id @default(uuid())
+  title              String
+  roomId             String               @unique
+  status             String               @default("ACTIVE") // "CREATED" | "ACTIVE" | "ENDED"
+  teamId             String?
+  team               Team?                @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  projectId          String?
+  project            Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  channelId          String?
+  channel            Channel?             @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  createdById        String
+  createdBy          User                 @relation("MeetingsCreated", fields: [createdById], references: [id], onDelete: Cascade)
+  isScreenSharing    Boolean              @default(false)
+  screenShareUserId  String?
+  startedAt          DateTime             @default(now())
+  endedAt            DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  participants       MeetingParticipant[]
+  messages           MeetingMessage[]
+  notifications      Notification[]
+
+  @@index([teamId])
+  @@index([projectId])
+  @@index([channelId])
+  @@index([roomId])
+  @@index([status])
+}
+
+model MeetingParticipant {
+  id           String    @id @default(uuid())
+  meetingId    String
+  meeting      Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         String    @default("participant") // "host" | "co-host" | "participant"
+  isMuted      Boolean   @default(false)
+  isVideoOff   Boolean   @default(false)
+  isHandRaised Boolean   @default(false)
+  joinedAt     DateTime  @default(now())
+  leftAt       DateTime?
+
+  @@unique([meetingId, userId])
+  @@index([meetingId])
+  @@index([userId])
+}
+
+model MeetingMessage {
+  id        String   @id @default(uuid())
+  meetingId String
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation("UserMeetingMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  text      String
+  createdAt DateTime @default(now())
+
+  @@index([meetingId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model UserPresence {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          String   @default("online") // "online" | "away" | "busy" | "offline"
+  customStatus    String?  // e.g. "Working on visual canvas"
+  currentActivity String?  // "voice_call" | "video_call" | "meeting" | "idle"
+  lastSeen        DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+

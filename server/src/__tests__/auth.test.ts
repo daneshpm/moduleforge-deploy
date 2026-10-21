@@ -32,7 +32,7 @@ async function call(method: string, url: string, opts: { token?: string; body?: 
 }
 
 before(async () => {
-  execSync('npx prisma db push --skip-generate --accept-data-loss', {
+  execSync('npx prisma db push --schema prisma/schema.sqlite.prisma --skip-generate --accept-data-loss', {
     cwd: path.join(__dirname, '..', '..'),
     env: process.env,
     stdio: 'ignore',

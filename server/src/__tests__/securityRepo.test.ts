@@ -76,7 +76,7 @@ async function newProject(name: string) {
 }
 
 before(async () => {
-  execSync('npx prisma db push --skip-generate --accept-data-loss', { cwd: path.join(__dirname, '..', '..'), env: process.env, stdio: 'ignore' });
+  execSync('npx prisma db push --schema prisma/schema.sqlite.prisma --skip-generate --accept-data-loss', { cwd: path.join(__dirname, '..', '..'), env: process.env, stdio: 'ignore' });
   ({ prisma } = require('../prisma'));
   ({ gitService } = require('../services/gitService'));
   const mk = (n: string) => prisma.user.create({ data: { email: `${n}@test.local`, name: n, username: n } });

@@ -6,10 +6,12 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push",
+    "prisma:generate": "node ../scripts/make-sqlite-schema.js && prisma generate --schema prisma/schema.sqlite.prisma",
+    "prisma:push": "prisma db push --schema prisma/schema.sqlite.prisma",
     "seed": "ts-node src/seed.ts",
-    "test": "node -r ts-node/register/transpile-only --test src/__tests__/*.test.ts"
+    "test": "node -r ts-node/register/transpile-only --test src/__tests__/*.test.ts",
+    "prisma:generate:pg": "prisma generate --schema prisma/schema.prisma",
+    "pretest": "npm run prisma:generate"
   },
   "dependencies": {
     "@prisma/client": "^5.11.0",
