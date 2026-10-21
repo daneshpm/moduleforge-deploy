@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -170,6 +170,14 @@ model Module {
   envVars             String?         @default("[]") // JSON string array of required env var names
   zipStoragePath      String?
   moduleJson          String?         // Optional JSON string if module.json is present
+  // Module contract (moduleforge manifest v1); null contractVersion = legacy module
+  contractVersion     String?
+  dependsOn           String?         // JSON [{id, versionRange}]
+  requiredEnv         String?         // JSON [{name, description, secret}]
+  hostServices        String?         // JSON string[]
+  eventsPublished     String?         // JSON string[]
+  eventsConsumed      String?         // JSON string[]
+  permissions         String?         // JSON string[]
   downloads           Int             @default(0)
   deployedUrl         String?
   isPublished         Boolean         @default(true)
@@ -206,8 +214,16 @@ model ModuleVersion {
   module         Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   version        String
   moduleJson     String?
+  contractVersion String?
+  dependsOn       String?
+  requiredEnv     String?
+  hostServices    String?
+  eventsPublished String?
+  eventsConsumed  String?
+  permissions     String?
   zipStoragePath String?
   changelog      String?
+  contentHash    String?  // sha256 over the archive's file paths + contents (re-publish guard)
   createdAt      DateTime @default(now())
 
   @@unique([moduleId, version])
@@ -290,7 +306,12 @@ model ProjectModule {
   project          Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
   moduleId         String
   module           Module             @relation(fields: [moduleId], references: [id])
-  moduleVersion    String
+  moduleVersion    String             // exact installed module version
+  installedContractId String?         // manifest id at install time (null for legacy modules)
+  pinnedRange      String?            // semver range requested at install, e.g. "^1.0.0"
+  installedAt      DateTime?
+  installedHash    String?            // sha256 over installedFiles (local-edit baseline)
+  installedFiles   String?            // JSON {relativePath: sha256} written at install time
   xPosition        Float              @default(0)
   yPosition        Float              @default(0)
   configuration    String?            // JSON configuration string

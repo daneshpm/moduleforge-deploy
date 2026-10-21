@@ -1,0 +1,40 @@
+{
+  "id": "notification-adapter",
+  "name": "Notification Adapter",
+  "version": "1.0.0",
+  "description": "Listens to other modules' events and sends user notifications via the host's notification service. Demonstrates cross-module events without imports.",
+  "type": "backend",
+  "category": "Communication",
+  "dependsOn": [],
+  "provides": {
+    "apiPrefix": "/api/notification-adapter",
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/api/notification-adapter/health"
+      }
+    ]
+  },
+  "requires": {
+    "env": [],
+    "hostServices": [
+      "notifications"
+    ]
+  },
+  "events": {
+    "publishes": [],
+    "consumes": [
+      "invoice.created",
+      "invoice.paid",
+      "payment_method.added"
+    ]
+  },
+  "permissions": [],
+  "runtime": {
+    "frontendCommand": null,
+    "backendCommand": null
+  },
+  "compatibility": {
+    "moduleforge": ">=1.0.0"
+  }
+}

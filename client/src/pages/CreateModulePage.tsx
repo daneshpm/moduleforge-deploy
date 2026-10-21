@@ -22,6 +22,7 @@ import { useModuleStore } from '../store/useModuleStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { ValidationResult } from '../types';
 import { ValidationReport } from '../components/ValidationReport';
+import { ContractPanel, contractInfoFromManifest, LegacyBadge } from '../components/ContractPanel';
 
 const CATEGORIES = [
   'CRM',
@@ -709,6 +710,26 @@ export const CreateModulePage: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {activeReport?.contract && (
+            <div className="space-y-2">
+              {activeReport.contract.hasContract && !activeReport.contract.valid ? (
+                <div className="p-3.5 rounded-xl bg-[#FDF3F3] border border-[#C94A4A]/20 text-[#C94A4A] text-xs font-mono space-y-1">
+                  <div className="font-bold">module.json is invalid and cannot be published:</div>
+                  {activeReport.contract.errors.map((e, i) => (
+                    <div key={i}>{e.path} {e.message}</div>
+                  ))}
+                </div>
+              ) : activeReport.contract.hasContract ? (
+                <ContractPanel contract={contractInfoFromManifest(activeReport.contract.manifest)} />
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-[#6B7471]">
+                  <LegacyBadge />
+                  <span>No module.json found. It will be published without a contract.</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {submitError && (
             <div className="p-3.5 rounded-xl bg-[#FDF3F3] border border-[#C94A4A]/20 text-[#C94A4A] text-xs font-mono flex items-center gap-2">

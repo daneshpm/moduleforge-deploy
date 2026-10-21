@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { useProjectRepoStore } from '../../store/useProjectRepoStore';
 import { Project } from '../../types';
+import { ModuleUpgradeDialog } from './ModuleUpgradeDialog';
+import type { ModuleUpdateInfo } from '../../store/useProjectRepoStore';
 
 interface ProjectRepoViewProps {
   project: Project;
@@ -40,6 +42,8 @@ export const ProjectRepoView: React.FC<ProjectRepoViewProps> = ({
     status,
     stats,
     manifest,
+    updates,
+    fetchUpdates,
     branches,
     currentBranch,
     history,
@@ -62,6 +66,7 @@ export const ProjectRepoView: React.FC<ProjectRepoViewProps> = ({
   } = useProjectRepoStore();
 
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'commits' | 'branches' | 'manifest' | 'settings'>('overview');
+  const [upgradeTarget, setUpgradeTarget] = useState<ModuleUpdateInfo | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
 
@@ -77,11 +82,13 @@ export const ProjectRepoView: React.FC<ProjectRepoViewProps> = ({
       fetchRepoOverview(project.id);
       fetchBranches(project.id);
       fetchHistory(project.id);
+      fetchUpdates(project.id);
     }
-  }, [project.id, fetchRepoOverview, fetchBranches, fetchHistory]);
+  }, [project.id, fetchRepoOverview, fetchBranches, fetchHistory, fetchUpdates]);
 
   const handleRefresh = async () => {
     await fetchRepoOverview(project.id);
+    await fetchUpdates(project.id);
     await fetchBranches(project.id);
     await fetchHistory(project.id);
   };
@@ -461,6 +468,10 @@ export const ProjectRepoView: React.FC<ProjectRepoViewProps> = ({
         </button>
       </div>
 
+      {upgradeTarget && (
+        <ModuleUpgradeDialog projectId={project.id} update={upgradeTarget} onClose={() => setUpgradeTarget(null)} />
+      )}
+
       {/* SUBTAB 1: OVERVIEW */}
       {activeSubTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -478,7 +489,9 @@ export const ProjectRepoView: React.FC<ProjectRepoViewProps> = ({
 
             {manifest?.modules && manifest.modules.length > 0 ? (
               <div className="space-y-2.5">
-                {manifest.modules.map((mod) => (
+                {manifest.modules.map((mod) => {
+                  const upd = (updates || []).find((u) => u.path === mod.path && u.updateAvailable);
+                  return (
                   <div
                     key={mod.id}
                     className="p-3.5 rounded-2xl bg-[#F7F8F7] border border-[#E2E6E4] flex items-center justify-between hover:border-[#1F5E4B]/40 transition"
@@ -490,11 +503,32 @@ export const ProjectRepoView: React.FC<ProjectRepoViewProps> = ({
                       </div>
                     </div>
 
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#EAF3EF] text-[#1F5E4B] border border-[#1F5E4B]/20">
-                      v{mod.version}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#EAF3EF] text-[#1F5E4B] border border-[#1F5E4B]/20">
+                        v{mod.version}
+                      </span>
+                      {upd && (
+                        <>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FDF3E7] text-[#7A4B0E] border border-[#E9C58F]">
+                            update v{upd.latest}
+                          </span>
+                          {upd.breaking && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FBEDED] text-[#8A2323] border border-[#E4B1B1]">
+                              breaking
+                            </span>
+                          )}
+                          <button
+                            onClick={() => setUpgradeTarget(upd)}
+                            className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#1F5E4B] text-white hover:opacity-90"
+                          >
+                            Upgrade
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="p-8 text-center bg-[#F7F8F7] rounded-2xl border border-dashed border-[#E2E6E4] space-y-2">

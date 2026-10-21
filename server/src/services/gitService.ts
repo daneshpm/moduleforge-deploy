@@ -45,6 +45,83 @@ export interface FileTreeItem {
   children?: FileTreeItem[];
 }
 
+/** Thrown when a user supplied repository path is unsafe (routes map it to HTTP 400). */
+export class RepoPathError extends Error {
+  status = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = 'RepoPathError';
+  }
+}
+
+/** True for a path segment that names (or, on Windows, aliases) the .git directory. */
+function isGitSegment(seg: string): boolean {
+  // NTFS ignores trailing dots/spaces and has the 8.3 alias GIT~1
+  const s = seg.replace(/[. ]+$/, '').toLowerCase();
+  return s === '.git' || s === 'git~1';
+}
+
+/**
+ * The ONE way to turn a user supplied relative path into an absolute path below `repoDir`.
+ * Rejects empty/'.' (unless allowRoot), absolute and drive paths, NUL bytes, '..' escapes, any '.git'
+ * segment (case-insensitive, either slash style) and symlink escapes; compares against root + path.sep so
+ * sibling directories sharing the prefix cannot pass.
+ */
+export function resolveInsideRepo(repoDir: string, rel: unknown, opts: { allowRoot?: boolean } = {}): string {
+  if (typeof rel !== 'string') throw new RepoPathError('Invalid path.');
+  if (rel.includes('\0')) throw new RepoPathError('Invalid path.');
+  const unified = rel.replace(/\\/g, '/');
+  if (unified.startsWith('/') || /^[a-zA-Z]:/.test(unified) || path.isAbsolute(rel)) {
+    throw new RepoPathError('Access denied: absolute paths are not allowed.');
+  }
+  const segments = unified.split('/').filter((s) => s !== '' && s !== '.');
+  if (segments.some(isGitSegment)) throw new RepoPathError('Access denied: the .git directory is not accessible.');
+  const normalized = path.posix.normalize(segments.join('/') || '.');
+  if (normalized === '..' || normalized.startsWith('../')) {
+    throw new RepoPathError('Access denied: path traversal detected.');
+  }
+  const root = path.resolve(repoDir);
+  if (normalized === '.') {
+    if (!opts.allowRoot) throw new RepoPathError('Invalid path: a file or folder inside the repository is required.');
+    return root;
+  }
+  const full = path.resolve(root, normalized);
+  if (!full.startsWith(root + path.sep)) throw new RepoPathError('Access denied: path traversal detected.');
+  // Refuse to follow a symlink out of the repository (deepest existing ancestor must stay inside)
+  try {
+    let probe = full;
+    while (!fs.existsSync(probe) && probe !== root) probe = path.dirname(probe);
+    const realRoot = fs.realpathSync(root);
+    const realProbe = fs.realpathSync(probe);
+    if (realProbe !== realRoot && !realProbe.startsWith(realRoot + path.sep)) {
+      throw new RepoPathError('Access denied: path escapes the repository.');
+    }
+  } catch (e) {
+    if (e instanceof RepoPathError) throw e;
+  }
+  return full;
+}
+
+/** Ingest destinations must live below modules/ (never the repo root, .git or other project files). */
+export function resolveModuleDestination(repoDir: string, dest: unknown): { full: string; rel: string } {
+  const full = resolveInsideRepo(repoDir, dest);
+  const rel = path.relative(path.resolve(repoDir), full).split(path.sep).join('/');
+  const parts = rel.split('/');
+  if (parts[0] !== 'modules' || parts.length < 2) {
+    throw new RepoPathError('Destination must be a folder inside modules/ (for example modules/my-module).');
+  }
+  return { full, rel };
+}
+
+/** Config forced on every git invocation so a hostile .git/config cannot run commands on the server. */
+const SAFE_GIT_CONFIG = [
+  '-c', 'core.fsmonitor=false',
+  '-c', 'core.hooksPath=/dev/null',
+  '-c', 'core.sshCommand=ssh',
+  '-c', 'credential.helper=',
+  '-c', 'protocol.ext.allow=never',
+];
+
 export class GitService {
   private reposRoot: string;
 
@@ -70,7 +147,7 @@ export class GitService {
     return new Promise((resolve, reject) => {
       execFile(
         'git',
-        args,
+        [...SAFE_GIT_CONFIG, ...args],
         {
           cwd,
           env: {
@@ -490,12 +567,8 @@ server.listen(port, () => console.log(\`${moduleName} running on http://localhos
 
   // File tree browser
   public getFileTree(repoDir: string, relativeSubDir: string = ''): FileTreeItem[] {
-    const targetDir = path.resolve(repoDir, relativeSubDir);
-
     // Prevent path traversal
-    if (!targetDir.startsWith(path.resolve(repoDir))) {
-      throw new Error('Access denied: path traversal detected.');
-    }
+    const targetDir = resolveInsideRepo(repoDir, relativeSubDir, { allowRoot: true });
 
     if (!fs.existsSync(targetDir)) return [];
 
@@ -537,10 +610,7 @@ server.listen(port, () => console.log(\`${moduleName} running on http://localhos
 
   // Safe file reader & writer
   public readFile(repoDir: string, relativePath: string): string {
-    const fullPath = path.resolve(repoDir, relativePath);
-    if (!fullPath.startsWith(path.resolve(repoDir))) {
-      throw new Error('Access denied: path traversal detected.');
-    }
+    const fullPath = resolveInsideRepo(repoDir, relativePath);
     if (!fs.existsSync(fullPath)) {
       throw new Error(`File not found: ${relativePath}`);
     }
@@ -548,10 +618,7 @@ server.listen(port, () => console.log(\`${moduleName} running on http://localhos
   }
 
   public saveFile(repoDir: string, relativePath: string, content: string): void {
-    const fullPath = path.resolve(repoDir, relativePath);
-    if (!fullPath.startsWith(path.resolve(repoDir))) {
-      throw new Error('Access denied: path traversal detected.');
-    }
+    const fullPath = resolveInsideRepo(repoDir, relativePath);
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, content, 'utf-8');
   }
@@ -752,26 +819,20 @@ Modules can be added, connected, and customized directly through the **ModuleFor
   ): Promise<{ commit: GitCommitRecord; fileCount: number; manifest: any }> {
     const repoDir = await this.ensureProjectRepo(projectId, projectName);
 
-    // Sanitize destination path
-    const cleanDest = destinationSubDir.replace(/^[/\\]+/, '').replace(/[/\\]+$/, '');
-    const targetBaseDir = path.resolve(repoDir, cleanDest);
-
-    // Path traversal check
-    if (!targetBaseDir.startsWith(path.resolve(repoDir))) {
-      throw new Error('Access denied: destination path traversal detected.');
-    }
+    // Destination must be modules/<name>...: no root, no .git, no traversal
+    const { full: targetBaseDir, rel: cleanDest } = resolveModuleDestination(repoDir, destinationSubDir);
 
     fs.mkdirSync(targetBaseDir, { recursive: true });
 
     // Write all extracted files safely
     let writtenCount = 0;
     for (const f of files) {
-      const relativePathInModule = f.path.replace(/^[/\\]+/, '');
-      const fullFilePath = path.resolve(targetBaseDir, relativePathInModule);
-
-      // Verify file is within targetBaseDir
-      if (!fullFilePath.startsWith(targetBaseDir)) {
-        continue; // Skip dangerous paths
+      let fullFilePath: string;
+      try {
+        // Rejects .git segments, absolute paths, traversal and symlink escapes
+        fullFilePath = resolveInsideRepo(targetBaseDir, f.path);
+      } catch {
+        continue; // Skip dangerous entries
       }
 
       fs.mkdirSync(path.dirname(fullFilePath), { recursive: true });
@@ -843,8 +904,8 @@ Modules can be added, connected, and customized directly through the **ModuleFor
       moduleName = existing.name || targetPath;
     }
 
-    const fullDirPath = path.resolve(repoDir, targetPath);
-    if (fullDirPath.startsWith(path.resolve(repoDir)) && fs.existsSync(fullDirPath)) {
+    const fullDirPath = resolveInsideRepo(repoDir, targetPath);
+    if (fs.existsSync(fullDirPath)) {
       fs.rmSync(fullDirPath, { recursive: true, force: true });
     }
 

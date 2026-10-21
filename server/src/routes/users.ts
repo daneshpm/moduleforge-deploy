@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
+import { getUserId } from '../middleware/auth';
 
 export const usersRouter = Router();
 
@@ -9,7 +10,7 @@ const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 usersRouter.get('/search', async (req, res) => {
   try {
     const query = String(req.query.q || '').trim().replace(/^@/, '');
-    const currentUserId = req.query.currentUserId as string | undefined;
+    const currentUserId = getUserId(req);
 
     if (!query || query.length < 1) {
       return res.json({ users: [] });
@@ -79,10 +80,11 @@ usersRouter.get('/check-username', async (req, res) => {
 // PATCH /api/users/profile - Update user profile & @username
 usersRouter.patch('/profile', async (req, res) => {
   try {
-    const { userId, name, username, avatarUrl } = req.body;
+    const { name, username, avatarUrl } = req.body;
+    const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     const user = await (prisma as any).user.findUnique({

@@ -7,8 +7,10 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
+  sendEmailVerification,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
+import type { User as FirebaseUser } from 'firebase/auth';
 
 const API_BASE = '/api';
 
@@ -55,7 +57,7 @@ function readPersisted(): User | null {
 }
 
 // Helper to sync user profile with backend SQLite database
-async function syncWithBackend(userData: Partial<User>): Promise<{ user: User; needsUsernameSetup: boolean }> {
+async function syncWithBackend(userData: Partial<User>): Promise<{ user: User; needsUsernameSetup: boolean; emailNotVerified?: boolean }> {
   try {
     const res = await fetch(`${API_BASE}/auth/sync`, {
       method: 'POST',
@@ -63,6 +65,9 @@ async function syncWithBackend(userData: Partial<User>): Promise<{ user: User; n
       body: JSON.stringify(userData),
     });
     const data = await res.json();
+    if (res.status === 403 && data?.code === 'EMAIL_NOT_VERIFIED') {
+      return { user: { id: '', email: userData.email || '', name: '', username: '' } as User, needsUsernameSetup: false, emailNotVerified: true };
+    }
     if (res.ok && data.user) {
       return {
         user: data.user,
@@ -89,6 +94,11 @@ async function syncWithBackend(userData: Partial<User>): Promise<{ user: User; n
   };
 }
 
+/** Firebase email/password users must verify their email before the API will accept them. */
+function needsEmailVerification(fbUser: FirebaseUser): boolean {
+  return fbUser.emailVerified === false && fbUser.providerData.some((p) => p.providerId === 'password');
+}
+
 // ---------------------------------------------------------------------------
 // Store Interface
 // ---------------------------------------------------------------------------
@@ -99,7 +109,12 @@ interface AuthState {
   error: string | null;
   isDevMode: boolean;
   needsUsernameSetup: boolean;
+  /** Set while a signed-in Firebase user has an unverified email (drives the Verify-your-email screen). */
+  pendingVerificationEmail: string | null;
 
+  markEmailUnverified: (email?: string) => void;
+  resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
+  confirmEmailVerified: () => Promise<{ success: boolean; error?: string }>;
   setNeedsUsernameSetup: (needs: boolean) => void;
   checkAuth: () => Promise<void>;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -154,8 +169,58 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   error: null,
   isDevMode: isLocalAuthFallback,
   needsUsernameSetup: false,
+  pendingVerificationEmail: null,
 
   setNeedsUsernameSetup: (needs: boolean) => set({ needsUsernameSetup: needs }),
+
+  // Called centrally (apiAuth) when any API call answers 403 EMAIL_NOT_VERIFIED.
+  markEmailUnverified: (email?: string) => {
+    if (get().pendingVerificationEmail) return; // already showing the screen; do not loop
+    const e = email || firebaseAuth?.currentUser?.email || get().user?.email || '';
+    persist(null);
+    set({ user: null, isAuthenticated: false, isLoading: false, needsUsernameSetup: false, pendingVerificationEmail: e });
+  },
+
+  resendVerificationEmail: async () => {
+    const u = firebaseAuth?.currentUser;
+    if (!u) return { success: false, error: 'You are signed out. Please sign in again.' };
+    try {
+      await sendEmailVerification(u);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: formatFirebaseAuthError(err) };
+    }
+  },
+
+  // "I've verified": reload the Firebase user, force a fresh ID token (email_verified claim), re-sync.
+  confirmEmailVerified: async () => {
+    const u = firebaseAuth?.currentUser;
+    if (!u) return { success: false, error: 'You are signed out. Please sign in again.' };
+    try {
+      await u.reload();
+      const fresh = firebaseAuth!.currentUser!;
+      if (!fresh.emailVerified) {
+        return { success: false, error: 'Your email is not verified yet. Open the link in the email, then try again.' };
+      }
+      await fresh.getIdToken(true);
+      const { user: syncedUser, needsUsernameSetup, emailNotVerified } = await syncWithBackend({
+        id: fresh.uid,
+        email: fresh.email ?? '',
+        name: fresh.displayName ?? fresh.email?.split('@')[0] ?? 'User',
+        avatarUrl: fresh.photoURL ?? undefined,
+        googleId: fresh.uid,
+        isDev: false,
+      });
+      if (emailNotVerified) {
+        return { success: false, error: 'The server still sees your email as unverified. Wait a moment and try again.' };
+      }
+      persist(syncedUser);
+      set({ user: syncedUser, isAuthenticated: true, isLoading: false, needsUsernameSetup, pendingVerificationEmail: null });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: formatFirebaseAuthError(err) };
+    }
+  },
 
   // ── Restore session on page load ─────────────────────────────────────────
   checkAuth: async () => {
@@ -166,8 +231,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await new Promise<void>((resolve) => {
         const unsubscribe = firebaseAuth!.onAuthStateChanged(async (fbUser) => {
           unsubscribe();
-          if (fbUser) {
-            const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
+          if (fbUser && needsEmailVerification(fbUser)) {
+            // No API call: the server would answer 403 anyway.
+            set({ user: null, isAuthenticated: false, isLoading: false, pendingVerificationEmail: fbUser.email ?? '' });
+          } else if (fbUser) {
+            const { user: syncedUser, needsUsernameSetup, emailNotVerified } = await syncWithBackend({
               id: fbUser.uid,
               email: fbUser.email ?? '',
               name: fbUser.displayName ?? fbUser.email?.split('@')[0] ?? 'User',
@@ -175,8 +243,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               googleId: fbUser.uid,
               isDev: false,
             });
-            persist(syncedUser);
-            set({ user: syncedUser, isAuthenticated: true, isLoading: false, needsUsernameSetup });
+            if (emailNotVerified) {
+              set({ user: null, isAuthenticated: false, isLoading: false, pendingVerificationEmail: fbUser.email ?? '' });
+            } else {
+              persist(syncedUser);
+              set({ user: syncedUser, isAuthenticated: true, isLoading: false, needsUsernameSetup });
+            }
           } else {
             // No Firebase session — fall through to localStorage
             const saved = readPersisted();
@@ -364,7 +436,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
         const fbUser = cred.user;
 
-        const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
+        if (needsEmailVerification(fbUser)) {
+          set({ user: null, isAuthenticated: false, isLoading: false, pendingVerificationEmail: fbUser.email ?? email });
+          return { success: true };
+        }
+
+        const { user: syncedUser, needsUsernameSetup, emailNotVerified } = await syncWithBackend({
           id: fbUser.uid,
           email: fbUser.email ?? email,
           name: fbUser.displayName ?? email.split('@')[0],
@@ -372,6 +449,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           googleId: fbUser.uid,
           isDev: false,
         });
+
+        if (emailNotVerified) {
+          set({ user: null, isAuthenticated: false, isLoading: false, pendingVerificationEmail: fbUser.email ?? email });
+          return { success: true };
+        }
 
         persist(syncedUser);
         set({ user: syncedUser, isAuthenticated: true, isLoading: false, needsUsernameSetup });
@@ -438,6 +520,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           } catch (profileErr) {
             console.warn('Could not set displayName on Firebase user:', profileErr);
           }
+        }
+
+        // Ask Firebase to send the verification email; the API rejects unverified email/password users.
+        try {
+          await sendEmailVerification(fbUser);
+        } catch (mailErr) {
+          console.warn('Could not send verification email:', mailErr);
+        }
+        if (needsEmailVerification(fbUser)) {
+          set({ user: null, isAuthenticated: false, isLoading: false, pendingVerificationEmail: fbUser.email ?? email });
+          return { success: true };
         }
 
         const { user: syncedUser, needsUsernameSetup } = await syncWithBackend({
@@ -611,6 +704,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const sb = await getSupabase();
     if (sb) await sb.auth.signOut();
     persist(null);
-    set({ user: null, isAuthenticated: false, isLoading: false, needsUsernameSetup: false });
+    set({ user: null, isAuthenticated: false, isLoading: false, needsUsernameSetup: false, pendingVerificationEmail: null });
   },
 }));

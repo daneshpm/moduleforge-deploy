@@ -27,6 +27,7 @@ import { useModuleStore } from '../store/useModuleStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { GitHubSyncCard } from '../components/GitHubSyncCard';
 import { AddModuleToRepoModal } from '../components/AddModuleToRepoModal';
+import { ContractPanel, LegacyBadge } from '../components/ContractPanel';
 
 export const ModuleDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -202,6 +203,7 @@ export const ModuleDetailsPage: React.FC = () => {
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#F7F8F7] text-[#6B7471] border border-[#E2E6E4]">
                   {module.categoryName}
                 </span>
+                {!module.contractVersion && <LegacyBadge />}
               </div>
               <p className="text-xs text-[#6B7471] font-mono">
                 by <span className="text-[#1F5E4B] font-semibold">{module.author}</span> • Updated {new Date(module.updatedAt).toLocaleDateString()}
@@ -409,6 +411,9 @@ export const ModuleDetailsPage: React.FC = () => {
       {/* Tab Content */}
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="md:col-span-2">
+            <ContractPanel contract={module} />
+          </div>
           {/* Routes */}
           <div className="p-5 rounded-2xl bg-white border border-[#E2E6E4] space-y-3 shadow-card">
             <h3 className="font-bold text-sm text-[#202524] flex items-center gap-2">

@@ -57,6 +57,7 @@ export const AcceptInvitePage: React.FC = () => {
   const [projectInvite, setProjectInvite] = useState<ProjectInviteDetails | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [acceptedSuccess, setAcceptedSuccess] = useState(false);
+  const [requestPending, setRequestPending] = useState(false);
   const [successRedirectMessage, setSuccessRedirectMessage] = useState('Redirecting to your workspace...');
 
   // Validate Invitation Token or Join Code
@@ -151,10 +152,15 @@ export const AcceptInvitePage: React.FC = () => {
 
         if (res.ok) {
           setAcceptedSuccess(true);
-          setSuccessRedirectMessage(`Successfully joined ${projectInvite.projectName}! Redirecting to Projects...`);
+          if (data.status === 'pending') {
+            setRequestPending(true);
+            setSuccessRedirectMessage('Request sent — waiting for the project owner to approve');
+          } else {
+            setSuccessRedirectMessage(`Successfully joined ${projectInvite.projectName}! Redirecting to Projects...`);
+          }
           setTimeout(() => {
             navigate('/projects');
-          }, 1500);
+          }, requestPending || data.status === 'pending' ? 2500 : 1500);
         } else {
           setError(data.error || 'Failed to accept project invitation');
         }
@@ -173,7 +179,14 @@ export const AcceptInvitePage: React.FC = () => {
 
         if (res.ok) {
           setAcceptedSuccess(true);
-          if (data.isProject) {
+          if (data.status === 'pending') {
+            // Join-code requests need the project owner's approval; do not claim we joined.
+            setRequestPending(true);
+            setSuccessRedirectMessage('Request sent — waiting for the project owner to approve');
+            setTimeout(() => {
+              navigate('/projects');
+            }, 2500);
+          } else if (data.isProject) {
             setSuccessRedirectMessage('Successfully joined project! Redirecting to Projects...');
             setTimeout(() => {
               navigate('/projects');
@@ -255,7 +268,7 @@ export const AcceptInvitePage: React.FC = () => {
                 <CheckCircle2 className="w-8 h-8" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-lg font-bold text-[#202524]">Welcome!</h3>
+                <h3 className="text-lg font-bold text-[#202524]">{requestPending ? 'Request sent' : 'Welcome!'}</h3>
                 <p className="text-xs text-[#6B7471]">
                   {successRedirectMessage}
                 </p>

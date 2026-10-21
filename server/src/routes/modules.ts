@@ -5,8 +5,18 @@ import fs from 'fs';
 import JSZip from 'jszip';
 import axios from 'axios';
 import { prisma } from '../prisma';
-import { validateZipBuffer } from '../validator';
+import { validateZipBuffer, validateContractInBuffer, legacyResult, ContractValidationResult } from '../validator';
+import {
+  resolve as resolveDependencies,
+  candidateFromModule,
+  projectModuleRefsFromRows,
+  resolveWarnings,
+} from '../services/dependencyResolver';
 import { gitService } from '../services/gitService';
+import { contractColumns, slugForPublish, slugCollisionMessage, publishVersion, PublishError, findModuleByIdOrSlug } from '../services/moduleVersioning';
+import { ZipLimitError } from '../services/zipLimits';
+import { getProjectAccess } from '../middleware/access';
+import { contentHashOfBuffer } from '../services/moduleInstall';
 import {
   registerWebhook,
   deleteWebhook,
@@ -14,7 +24,26 @@ import {
   getWebhookUrl,
 } from '../services/githubWebhookService';
 
+import { getUserId, isEnforced } from '../middleware/auth';
+
 export const modulesRouter = Router();
+
+// Only the module's author may modify / sync / delete it.
+async function moduleOwnerOnly(req: any, res: any, next: any) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+    const mod = await findModuleByIdOrSlug(req.params.id, { select: { authorId: true } });
+    if (!mod) return res.status(404).json({ error: 'Module not found' });
+    if (mod.authorId ? mod.authorId !== userId : isEnforced()) {
+      return res.status(403).json({ error: 'Only the module author can do this' });
+    }
+    next();
+  } catch (e: any) {
+    res.status(500).json({ error: 'Failed to verify module ownership' });
+  }
+}
+
 
 // On Vercel the filesystem outside /tmp is read-only — use /tmp in production
 const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
@@ -110,15 +139,47 @@ modulesRouter.get('/', async (req, res) => {
   }
 });
 
+// GET /api/modules/:id/dependency-check?projectId=... - what would adding this module to a project break?
+modulesRouter.get('/:id/dependency-check', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
+    if (!projectId) {
+      return res.status(400).json({ error: 'projectId query parameter is required' });
+    }
+    // Only members of the project may probe what is installed in it
+    const callerId = getUserId(req);
+    if (!callerId) return res.status(401).json({ error: 'Authentication required' });
+    const access = await getProjectAccess(callerId, projectId);
+    if (!access.exists || !access.isMember) return res.status(404).json({ error: 'Project not found' });
+    const mod = await findModuleByIdOrSlug(id);
+    if (!mod) {
+      return res.status(404).json({ error: 'Module not found' });
+    }
+    const rows = await prisma.projectModule.findMany({
+      where: { projectId },
+      include: { module: true },
+    });
+    const result = resolveDependencies(projectModuleRefsFromRows(rows), candidateFromModule(mod));
+    res.json({
+      moduleId: mod.id,
+      projectId,
+      contractVersion: (mod as any).contractVersion ?? null,
+      ok: result.missing.length === 0 && result.conflicts.length === 0,
+      ...result,
+      warnings: resolveWarnings(result),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/modules/:idOrSlug - Details
 modulesRouter.get('/:idOrSlug', async (req, res) => {
   try {
     const { idOrSlug } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: {
-        OR: [{ id: idOrSlug }, { slug: idOrSlug }],
-      },
+    const module = await findModuleByIdOrSlug(idOrSlug, {
       include: {
         category: true,
         versions: { orderBy: { createdAt: 'desc' } },
@@ -150,7 +211,7 @@ modulesRouter.post('/upload', upload.single('file'), async (req, res) => {
     if (!zipValidation.valid) {
       // Unlink bad file
       fs.unlinkSync(file.path);
-      return res.status(400).json({
+      return res.status(zipValidation.status || 400).json({
         valid: false,
         error: zipValidation.error || 'Invalid or corrupted ZIP file.',
       });
@@ -171,6 +232,8 @@ modulesRouter.post('/upload', upload.single('file'), async (req, res) => {
         fileCount: zipValidation.fileCount,
       },
       extractedMetadata: zipValidation.extractedMetadata,
+      contract: zipValidation.contract,
+      warnings: zipValidation.warnings || [],
     });
   } catch (error: any) {
     if (req.file && fs.existsSync(req.file.path)) {
@@ -311,6 +374,8 @@ modulesRouter.post('/github', async (req, res) => {
         stars: repoInfo?.stargazers_count || 0,
       },
       extractedMetadata: zipValidation.extractedMetadata,
+      contract: zipValidation.contract,
+      warnings: zipValidation.warnings || [],
     });
   } catch (error: any) {
     res.status(500).json({ valid: false, error: error.message || 'Failed to import GitHub repository' });
@@ -345,7 +410,7 @@ modulesRouter.post('/', async (req, res) => {
       deployedUrl,
     } = req.body;
 
-    const rawAuthorId = bodyAuthorId || (req.headers['x-user-id'] as string | undefined);
+    const rawAuthorId = getUserId(req);
     let validAuthorId: string | null = null;
     if (rawAuthorId && typeof rawAuthorId === 'string' && rawAuthorId.trim()) {
       try {
@@ -378,19 +443,43 @@ modulesRouter.post('/', async (req, res) => {
       cleanDeployedUrl = trimmed;
     }
 
+    // Contract validation: read module.json from the stored archive (only from our own storage dir)
+    let contract: ContractValidationResult = legacyResult();
+    let archiveBuffer: Buffer | null = null;
+    if (storagePath && typeof storagePath === 'string') {
+      const resolvedStorage = path.resolve(storagePath);
+      if (resolvedStorage.startsWith(path.resolve(storageDir) + path.sep) && fs.existsSync(resolvedStorage)) {
+        archiveBuffer = fs.readFileSync(resolvedStorage);
+        contract = await validateContractInBuffer(archiveBuffer);
+      }
+    }
+    if (contract.hasContract && !contract.valid) {
+      return res.status(400).json({
+        error: 'module.json is invalid',
+        errors: contract.errors,
+        warnings: contract.warnings,
+      });
+    }
+    const contractData = contractColumns(contract);
+    // A valid manifest is the source of truth for the published version
+    const publishVersionStr: string = contract.manifest?.version || version || '1.0.0';
+    const contentHash = archiveBuffer ? await contentHashOfBuffer(archiveBuffer) : null;
+
     const categoryName = category || 'Other';
     const authorName = author || 'Developer';
 
     // Generate slug from module name
-    let slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    if (!slug) slug = `module-${Date.now()}`;
+    let nameSlug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (!nameSlug) nameSlug = `module-${Date.now()}`;
+    // slug == manifest id when a valid v1 manifest exists
+    const { slug, forced: slugForced } = slugForPublish(contract, nameSlug);
 
-    // Ensure category exists in DB
+    // Ensure category exists in DB (a concurrent publish may create it first: ignore the unique violation)
     await prisma.category.upsert({
       where: { name: categoryName },
       update: {},
       create: { name: categoryName, slug: categoryName.toLowerCase().replace(/[^a-z0-9]/g, '-') },
-    });
+    }).catch((e: any) => { if (e?.code !== 'P2002') throw e; });
 
     const technologiesJson = JSON.stringify(Array.isArray(technologies) ? technologies : []);
     const envVarsJson = JSON.stringify(Array.isArray(envVars) ? envVars : (typeof envVars === 'string' ? envVars.split(',').map((s: string) => s.trim()).filter(Boolean) : []));
@@ -398,6 +487,9 @@ modulesRouter.post('/', async (req, res) => {
     let savedModule: any = null;
     const initialCommitSha = sourceType === 'github' ? `${Date.now().toString(16).slice(-7)}` : null;
     const existing = await prisma.module.findUnique({ where: { slug } });
+    if (existing && slugForced) {
+      return res.status(409).json({ error: slugCollisionMessage(slug), slug, conflictingModuleId: existing.id });
+    }
     const repoType = sourceType === 'github' ? 'github' : (sourceType === 'moduleforge' ? 'moduleforge' : 'upload');
 
     const moduleData = {
@@ -406,7 +498,7 @@ modulesRouter.post('/', async (req, res) => {
       author: authorName,
       authorId: validAuthorId,
       categoryName,
-      version: version || '1.0.0',
+      version: publishVersionStr,
       technologies: technologiesJson,
       sourceType,
       repositoryType: repoType,
@@ -429,6 +521,8 @@ modulesRouter.post('/', async (req, res) => {
       workingDir: workingDir || '.',
       envVars: envVarsJson,
       zipStoragePath: storagePath || null,
+      moduleJson: contract.manifest ? JSON.stringify(contract.manifest) : null,
+      ...contractData,
       deployedUrl: cleanDeployedUrl,
       isPublished: true,
     };
@@ -442,8 +536,11 @@ modulesRouter.post('/', async (req, res) => {
           repositoryUrl: sourceType === 'moduleforge' ? `moduleforge/${finalSlug}` : moduleData.repositoryUrl,
           versions: {
             create: {
-              version: version || '1.0.0',
+              version: publishVersionStr,
               zipStoragePath: storagePath || null,
+              moduleJson: contract.manifest ? JSON.stringify(contract.manifest) : null,
+              ...contractData,
+              contentHash,
             },
           },
         },
@@ -456,8 +553,11 @@ modulesRouter.post('/', async (req, res) => {
           slug,
           versions: {
             create: {
-              version: version || '1.0.0',
+              version: publishVersionStr,
               zipStoragePath: storagePath || null,
+              moduleJson: contract.manifest ? JSON.stringify(contract.manifest) : null,
+              ...contractData,
+              contentHash,
             },
           },
         },
@@ -496,14 +596,23 @@ modulesRouter.post('/', async (req, res) => {
     res.status(201).json({
       success: true,
       module: formatModuleOutput(savedModule),
+      warnings: contract.warnings,
     });
   } catch (error: any) {
+    if (error instanceof ZipLimitError) return res.status(413).json({ error: error.message });
+    // Concurrent publish of the same manifest id: the loser hits the unique constraint
+    if (error?.code === 'P2002') {
+      return res.status(409).json({ error: 'A module with this id was published at the same time. Retry as a new version with PUT /api/modules/:id.', code: 'MODULE_CONFLICT' });
+    }
     res.status(500).json({ error: error.message });
   }
 });
 
-// PUT /api/modules/:id - Update Module (including Deployed URL)
-modulesRouter.put('/:id', async (req, res) => {
+// PUT|PATCH /api/modules/:id - Update module metadata and/or publish a new version.
+// Body may include `storagePath` (an archive from /upload or /github) and `changelog`. When an archive or a new
+// `version` is supplied the contract columns are refreshed from it and a ModuleVersion row is created for a new
+// version; re-publishing an existing version with different content is a 409.
+const updateModuleHandler = async (req: any, res: any) => {
   try {
     const { id } = req.params;
     const {
@@ -522,11 +631,11 @@ modulesRouter.put('/:id', async (req, res) => {
       backendUrl,
       workingDir,
       envVars,
+      storagePath,
+      changelog,
     } = req.body;
 
-    const existing = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const existing = await findModuleByIdOrSlug(id);
 
     if (!existing) {
       return res.status(404).json({ error: 'Module not found' });
@@ -542,9 +651,6 @@ modulesRouter.put('/:id', async (req, res) => {
     }
     if (author !== undefined && typeof author === 'string') {
       updateData.author = author.trim();
-    }
-    if (version !== undefined && typeof version === 'string') {
-      updateData.version = version.trim();
     }
     if (category !== undefined && typeof category === 'string' && category.trim()) {
       updateData.categoryName = category.trim();
@@ -584,104 +690,39 @@ modulesRouter.put('/:id', async (req, res) => {
     if (backendUrl !== undefined) updateData.backendUrl = backendUrl;
     if (workingDir !== undefined) updateData.workingDir = workingDir;
 
-    const updated = await prisma.module.update({
-      where: { id: existing.id },
-      data: updateData,
-      include: { category: true },
-    });
-
-    res.json({
-      success: true,
-      module: formatModuleOutput(updated),
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// PATCH /api/modules/:id - Patch alias
-modulesRouter.patch('/:id', async (req, res) => {
-  // Delegate to PUT handler logic
-  try {
-    const { id } = req.params;
-    const {
-      name,
-      description,
-      category,
-      author,
-      version,
-      technologies,
-      deployedUrl,
-      frontendCommand,
-      backendCommand,
-      frontendPort,
-      backendPort,
-      frontendUrl,
-      backendUrl,
-      workingDir,
-      envVars,
-    } = req.body;
-
-    const existing = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
-
-    if (!existing) {
-      return res.status(404).json({ error: 'Module not found' });
+    // New archive and/or version -> versioned publish (validated before the metadata update is applied)
+    let archiveBuffer: Buffer | undefined;
+    let contract: ContractValidationResult = legacyResult();
+    let zipPath: string | null = null;
+    if (storagePath !== undefined && storagePath !== null && storagePath !== '') {
+      const resolvedStorage = typeof storagePath === 'string' ? path.resolve(storagePath) : '';
+      if (!resolvedStorage.startsWith(path.resolve(storageDir) + path.sep) || !fs.existsSync(resolvedStorage)) {
+        return res.status(400).json({ error: 'storagePath must be an archive uploaded through /api/modules/upload' });
+      }
+      archiveBuffer = fs.readFileSync(resolvedStorage);
+      zipPath = resolvedStorage;
+      contract = await validateContractInBuffer(archiveBuffer);
     }
-
-    const updateData: any = {};
-
-    if (name !== undefined && typeof name === 'string' && name.trim()) {
-      updateData.name = name.trim();
-    }
-    if (description !== undefined && typeof description === 'string' && description.trim()) {
-      updateData.description = description.trim();
-    }
-    if (author !== undefined && typeof author === 'string') {
-      updateData.author = author.trim();
-    }
-    if (version !== undefined && typeof version === 'string') {
-      updateData.version = version.trim();
-    }
-    if (category !== undefined && typeof category === 'string' && category.trim()) {
-      updateData.categoryName = category.trim();
-      await prisma.category.upsert({
-        where: { name: updateData.categoryName },
-        update: {},
-        create: { name: updateData.categoryName, slug: updateData.categoryName.toLowerCase().replace(/[^a-z0-9]/g, '-') },
-      });
-    }
-    if (technologies !== undefined) {
-      updateData.technologies = JSON.stringify(Array.isArray(technologies) ? technologies : []);
-    }
-    if (envVars !== undefined) {
-      updateData.envVars = JSON.stringify(Array.isArray(envVars) ? envVars : (typeof envVars === 'string' ? envVars.split(',').map((s: string) => s.trim()).filter(Boolean) : []));
-    }
-
-    if (deployedUrl !== undefined) {
-      if (deployedUrl === null || deployedUrl === '') {
-        updateData.deployedUrl = null;
-      } else if (typeof deployedUrl === 'string') {
-        const trimmed = deployedUrl.trim();
-        if (trimmed === '') {
-          updateData.deployedUrl = null;
-        } else if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-          return res.status(400).json({ error: 'Deployed link must be a valid URL starting with http:// or https://' });
-        } else {
-          updateData.deployedUrl = trimmed;
+    const requestedVersion = typeof version === 'string' && version.trim() ? version.trim() : undefined;
+    const versionChanging = !!requestedVersion && requestedVersion !== existing.version;
+    let publish: Awaited<ReturnType<typeof publishVersion>> | null = null;
+    if (archiveBuffer || versionChanging) {
+      try {
+        publish = await publishVersion(existing, {
+          contract,
+          buffer: archiveBuffer,
+          zipPath,
+          version: requestedVersion,
+          changelog: typeof changelog === 'string' ? changelog : null,
+        });
+      } catch (e: any) {
+        if (e instanceof PublishError) {
+          return res.status(e.status).json({ error: e.message, ...(e.details || {}) });
         }
+        throw e;
       }
     }
 
-    if (frontendCommand !== undefined) updateData.frontendCommand = frontendCommand;
-    if (backendCommand !== undefined) updateData.backendCommand = backendCommand;
-    if (frontendPort !== undefined) updateData.frontendPort = Number(frontendPort) || 5173;
-    if (backendPort !== undefined) updateData.backendPort = Number(backendPort) || 5000;
-    if (frontendUrl !== undefined) updateData.frontendUrl = frontendUrl;
-    if (backendUrl !== undefined) updateData.backendUrl = backendUrl;
-    if (workingDir !== undefined) updateData.workingDir = workingDir;
-
     const updated = await prisma.module.update({
       where: { id: existing.id },
       data: updateData,
@@ -691,20 +732,27 @@ modulesRouter.patch('/:id', async (req, res) => {
     res.json({
       success: true,
       module: formatModuleOutput(updated),
+      version: publish?.version ?? updated.version,
+      versionCreated: publish?.versionCreated ?? false,
+      warnings: publish ? contract.warnings : [],
     });
   } catch (error: any) {
+    if (error instanceof ZipLimitError) return res.status(413).json({ error: error.message });
+    if (error?.code === 'P2002') {
+      return res.status(409).json({ error: 'This version was published at the same time by another request.', code: 'MODULE_CONFLICT' });
+    }
     res.status(500).json({ error: error.message });
   }
-});
+};
+modulesRouter.put('/:id', moduleOwnerOnly, updateModuleHandler);
+modulesRouter.patch('/:id', moduleOwnerOnly, updateModuleHandler);
 
 // GET /api/modules/:id/download - Download single module ZIP archive
 modulesRouter.get('/:id/download', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -738,13 +786,11 @@ modulesRouter.get('/:id/download', async (req, res) => {
 });
 
 // DELETE /api/modules/:id - Delete module folder & database record
-modulesRouter.delete('/:id', async (req, res) => {
+modulesRouter.delete('/:id', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -776,13 +822,11 @@ modulesRouter.delete('/:id', async (req, res) => {
 });
 
 // POST /api/modules/:id/check-sync - Check GitHub for new commits
-modulesRouter.post('/:id/check-sync', async (req, res) => {
+modulesRouter.post('/:id/check-sync', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -846,13 +890,11 @@ modulesRouter.post('/:id/check-sync', async (req, res) => {
 });
 
 // POST /api/modules/:id/sync - Perform Manual Synchronization
-modulesRouter.post('/:id/sync', async (req, res) => {
+modulesRouter.post('/:id/sync', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -927,16 +969,36 @@ modulesRouter.post('/:id/sync', async (req, res) => {
       return res.status(400).json({ error: zipValidation.error || 'Invalid repository archive' });
     }
 
+    // Refresh the contract from the new archive; a v1 manifest that fails validation is rejected
+    const syncContract = zipValidation.contract || legacyResult();
+    if (syncContract.hasContract && !syncContract.valid) {
+      await prisma.module.update({ where: { id: module.id }, data: { githubSyncStatus: 'sync_failed' } });
+      return res.status(400).json({ error: 'module.json is invalid', errors: syncContract.errors, warnings: syncContract.warnings });
+    }
+
     // Save archive to disk
     const zipFileName = `github-${owner}-${repo}-${Date.now()}.zip`;
     const permanentPath = path.join(storageDir, zipFileName);
     fs.writeFileSync(permanentPath, archiveBuffer);
 
+    // Versioned publish: new ModuleVersion when the manifest version changed; 409 when an existing version changed content
+    let publish: Awaited<ReturnType<typeof publishVersion>>;
+    try {
+      publish = await publishVersion(module, { contract: syncContract, buffer: archiveBuffer, zipPath: permanentPath });
+    } catch (e: any) {
+      try { fs.unlinkSync(permanentPath); } catch (_) {}
+      if (e instanceof PublishError) {
+        await prisma.module.update({ where: { id: module.id }, data: { githubSyncStatus: 'sync_failed' } });
+        return res.status(e.status).json({ error: e.message, ...(e.details || {}) });
+      }
+      throw e;
+    }
+
     // Update module in DB
     const updatedModule = await prisma.module.update({
       where: { id: module.id },
       data: {
-        zipStoragePath: permanentPath,
+        zipStoragePath: publish.version && publish.module.version !== publish.version ? publish.module.zipStoragePath : permanentPath,
         githubCurrentCommit: latestCommitSha,
         githubLatestCommit: latestCommitSha,
         githubLastSyncedAt: new Date(),
@@ -958,6 +1020,9 @@ modulesRouter.post('/:id/sync', async (req, res) => {
     res.json({
       success: true,
       message: 'Module synchronized successfully',
+      version: publish.version ?? updatedModule.version,
+      versionCreated: publish.versionCreated,
+      warnings: syncContract.warnings,
       module: formatModuleOutput(updatedModule),
       syncLog,
     });
@@ -971,9 +1036,7 @@ modulesRouter.get('/:id/sync-history', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -996,9 +1059,7 @@ modulesRouter.get('/:id/webhook-status', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -1022,16 +1083,14 @@ modulesRouter.get('/:id/webhook-status', async (req, res) => {
 });
 
 // POST /api/modules/:id/register-webhook - Register a GitHub push webhook
-modulesRouter.post('/:id/register-webhook', async (req, res) => {
+modulesRouter.post('/:id/register-webhook', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
     // Allow client to pass their own token from the Settings page
     // We pass it as overrides rather than mutating process.env (which is global and unsafe in serverless)
     const { githubToken, webhookSecret } = req.body || {};
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -1062,13 +1121,11 @@ modulesRouter.post('/:id/register-webhook', async (req, res) => {
 });
 
 // DELETE /api/modules/:id/webhook - Remove the GitHub push webhook
-modulesRouter.delete('/:id/webhook', async (req, res) => {
+modulesRouter.delete('/:id/webhook', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
@@ -1090,7 +1147,7 @@ modulesRouter.delete('/:id/webhook', async (req, res) => {
 });
 
 // PUT /api/modules/:id/runtime-config - Update Module Runtime Configuration
-modulesRouter.put('/:id/runtime-config', async (req, res) => {
+modulesRouter.put('/:id/runtime-config', moduleOwnerOnly, async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -1104,9 +1161,7 @@ modulesRouter.put('/:id/runtime-config', async (req, res) => {
       envVars,
     } = req.body;
 
-    const module = await prisma.module.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-    });
+    const module = await findModuleByIdOrSlug(id);
 
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });

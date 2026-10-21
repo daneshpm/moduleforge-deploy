@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { modulesRouter } from './routes/modules';
@@ -16,37 +15,26 @@ import { directChatsRouter } from './routes/directChats';
 import { callsRouter } from './routes/calls';
 import { meetingsRouter } from './routes/meetings';
 import { presenceRouter } from './routes/presence';
+import { buildCors, getAllowedOrigins } from './cors';
+import { authenticate, authenticateUnlessGet, logAuthStartupWarnings } from './middleware/auth';
 
 dotenv.config();
+logAuthStartupWarnings();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const isDev = process.env.NODE_ENV !== 'production';
+// Explicit opt-in only: an unset/unknown NODE_ENV must NOT enable dev routes or wildcard CORS.
+const isDev = process.env.NODE_ENV === 'development';
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
-// In production only allow the configured frontend origin.
+// In production only ALLOWED_ORIGINS plus same-origin requests (Origin host == Host, or VERCEL_URL /
+// VERCEL_BRANCH_URL) are allowed (no wildcard, no *.vercel.app). Requests with no Origin header (curl, same-origin, webhooks) pass.
 // In development allow any origin so the Vite dev server can reach the API.
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
-  : [];
+if (!isDev && getAllowedOrigins().length === 0) {
+  console.warn('WARNING: ALLOWED_ORIGINS is not set (non-development); only same-origin (Origin host == Host / VERCEL_URL) browser requests will be accepted.');
+}
 
-app.use(
-  cors({
-    origin: isDev
-      ? true // allow all in dev
-      : (origin, callback) => {
-          // allow requests with no origin (curl, Vercel internal, webhooks, same-origin)
-          if (!origin) return callback(null, true);
-          // On Vercel the frontend and API are on the same domain — always allow same origin
-          if (allowedOrigins.length === 0) return callback(null, true);
-          if (allowedOrigins.includes(origin)) return callback(null, true);
-          // Also allow any vercel.app subdomain of this project (preview deployments)
-          if (origin.endsWith('.vercel.app')) return callback(null, true);
-          callback(new Error(`CORS: origin "${origin}" not allowed`));
-        },
-    credentials: true,
-  })
-);
+app.use(buildCors(isDev));
 
 // ── Body parsers ──────────────────────────────────────────────────────────────
 app.use(
@@ -74,17 +62,28 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ── API routes ────────────────────────────────────────────────────────────────
+// /api/auth/sync verifies the token itself (inside the route); google-dev is dev-only.
 app.use('/api/auth', authRouter);
-app.use('/api/users', usersRouter);
-app.use('/api/teams', teamsRouter);
+app.use('/api/users', authenticate, usersRouter);
+app.use('/api/teams', authenticate, teamsRouter);
+// GET /api/invitations/:token stays public (the token is the secret); accept/decline are protected in the router.
 app.use('/api/invitations', invitationsRouter);
-app.use('/api/notifications', notificationsRouter);
-app.use('/api/modules', modulesRouter);
-app.use('/api/projects', projectsRouter);
-app.use('/api/presence', presenceRouter);
+app.use('/api/notifications', authenticate, notificationsRouter);
+// Marketplace reads (GET) are public; every write requires authentication.
+app.use('/api/modules', authenticateUnlessGet, modulesRouter);
+app.use('/api/projects', authenticate, projectsRouter);
+app.use('/api/presence', authenticate, presenceRouter);
+// Chat / DM / calls / meetings: each router applies authenticate itself (router.use) and enforces per-resource access.
+// The client calls direct chats under /api/chats.
+app.use('/api/channels', channelsRouter);
+app.use('/api/chats', directChatsRouter);
+app.use('/api/calls', callsRouter);
+app.use('/api/meetings', meetingsRouter);
+// GitHub webhook: no user auth; protected by mandatory HMAC signature (GITHUB_WEBHOOK_SECRET)
+app.use('/api/webhooks', webhooksRouter);
 
 // ── GitHub Helper Routes ──────────────────────────────────────────────────────
-app.post('/api/github/connect', async (req, res) => {
+app.post('/api/github/connect', authenticate, async (req, res) => {
   try {
     const { token } = req.body;
     const testToken = token || process.env.GITHUB_TOKEN;
@@ -117,7 +116,7 @@ app.post('/api/github/connect', async (req, res) => {
   }
 });
 
-app.get('/api/github/repositories', async (req, res) => {
+app.get('/api/github/repositories', authenticate, async (req, res) => {
   try {
     const token = (req.headers['x-github-token'] || req.query.token) as string | undefined;
     const { projectRepoService } = require('./services/projectRepoService');
@@ -136,8 +135,8 @@ if (isDev) {
   const { runnerRouter } = require('./routes/runner');
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const gitRouter = require('./routes/git').default;
-  app.use('/api/runner', runnerRouter);
-  app.use('/api/git', gitRouter);
+  app.use('/api/runner', authenticate, runnerRouter);
+  app.use('/api/git', authenticate, gitRouter);
 } else {
   app.use('/api/runner', (_req: any, res: any) => {
     res.status(503).json({

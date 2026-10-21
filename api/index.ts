@@ -10,7 +10,7 @@ export default function handler(req: any, res: any) {
   } catch (err: any) {
     console.error('Unhandled serverless function error:', err);
     if (!res.headersSent) {
-      res.status(200).json({ success: false, error: err.message, isFallback: true });
+      res.status(500).json({ success: false, error: 'Internal server error' });
     }
   }
 }

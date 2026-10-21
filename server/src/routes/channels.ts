@@ -1,7 +1,22 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
+import { authenticate, getUserId } from '../middleware/auth';
+import { canAccessScope, canAccessChannel } from '../middleware/access';
 
 export const channelsRouter = Router();
+channelsRouter.use(authenticate);
+
+// Any route with a :channelId requires access to the channel's team/project
+channelsRouter.param('channelId', async (req, res, next, channelId) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+    if (!(await canAccessChannel(userId, channelId))) return res.status(404).json({ error: 'Channel not found' });
+    next();
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to verify channel access' });
+  }
+});
 
 // GET /api/channels - List channels for a team or project
 channelsRouter.get('/', async (req, res) => {
@@ -10,6 +25,11 @@ channelsRouter.get('/', async (req, res) => {
 
     if (!teamId && !projectId) {
       return res.status(400).json({ error: 'teamId or projectId is required' });
+    }
+
+    const callerId = getUserId(req);
+    if (!callerId || !(await canAccessScope(callerId, teamId ? String(teamId) : null, projectId ? String(projectId) : null))) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     const channels = await (prisma as any).channel.findMany({
@@ -60,7 +80,8 @@ channelsRouter.get('/', async (req, res) => {
 // POST /api/channels - Create a channel
 channelsRouter.post('/', async (req, res) => {
   try {
-    const { name, description, type = 'text', teamId, projectId, createdById, isPrivate = false } = req.body;
+    const { name, description, type = 'text', teamId, projectId, isPrivate = false } = req.body;
+    const createdById = getUserId(req);
 
     if (!name) {
       return res.status(400).json({ error: 'Channel name is required' });
@@ -68,6 +89,10 @@ channelsRouter.post('/', async (req, res) => {
 
     if (!teamId && !projectId) {
       return res.status(400).json({ error: 'teamId or projectId is required' });
+    }
+
+    if (!createdById || !(await canAccessScope(createdById, teamId, projectId))) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     // Sanitize channel name (lowercase, kebab-case style like Discord/Slack)
@@ -132,7 +157,8 @@ channelsRouter.get('/:channelId/messages', async (req, res) => {
 channelsRouter.post('/:channelId/messages', async (req, res) => {
   try {
     const { channelId } = req.params;
-    const { senderId, text, attachments = [] } = req.body;
+    const { text, attachments = [] } = req.body;
+    const senderId = getUserId(req);
 
     if (!senderId || (!text && (!attachments || attachments.length === 0))) {
       return res.status(400).json({ error: 'senderId and message text or attachments are required' });
@@ -215,7 +241,10 @@ channelsRouter.post('/:channelId/upload', attachmentUpload.single('file'), (req:
 // DELETE /api/channels/:channelId/messages/:messageId - Delete a channel message
 channelsRouter.delete('/:channelId/messages/:messageId', async (req, res) => {
   try {
-    const { messageId } = req.params;
+    const { channelId, messageId } = req.params;
+    const msg = await (prisma as any).channelMessage.findUnique({ where: { id: messageId } });
+    if (!msg || msg.channelId !== channelId) return res.status(404).json({ error: 'Message not found' });
+    if (msg.senderId !== getUserId(req)) return res.status(403).json({ error: 'You can only delete your own messages' });
     await (prisma as any).channelMessage.delete({
       where: { id: messageId },
     });

@@ -1,0 +1,82 @@
+{
+  "id": "invoice",
+  "name": "Invoices",
+  "version": "1.0.0",
+  "description": "Create, list and track invoices with line items and totals (draft/sent/paid/void). Marks invoices paid when a payment.received event arrives.",
+  "type": "fullstack",
+  "category": "Accounting",
+  "dependsOn": [
+    {
+      "id": "payment-method",
+      "versionRange": "^1.0.0",
+      "optional": true
+    }
+  ],
+  "provides": {
+    "apiPrefix": "/api/invoices",
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/api/invoices"
+      },
+      {
+        "method": "POST",
+        "path": "/api/invoices"
+      },
+      {
+        "method": "GET",
+        "path": "/api/invoices/:id"
+      },
+      {
+        "method": "POST",
+        "path": "/api/invoices/:id/send"
+      },
+      {
+        "method": "POST",
+        "path": "/api/invoices/:id/void"
+      }
+    ],
+    "uiExports": [
+      {
+        "name": "Invoices",
+        "kind": "component"
+      }
+    ]
+  },
+  "requires": {
+    "env": [],
+    "database": {
+      "tables": [
+        "inv_invoices",
+        "inv_items"
+      ],
+      "prefix": "inv_"
+    },
+    "hostServices": [
+      "auth.currentUser",
+      "db"
+    ]
+  },
+  "events": {
+    "publishes": [
+      "invoice.created",
+      "invoice.paid"
+    ],
+    "consumes": [
+      "payment.received"
+    ]
+  },
+  "permissions": [
+    "invoice.invoice.read",
+    "invoice.invoice.create",
+    "invoice.invoice.send",
+    "invoice.invoice.void"
+  ],
+  "runtime": {
+    "frontendCommand": null,
+    "backendCommand": null
+  },
+  "compatibility": {
+    "moduleforge": ">=1.0.0"
+  }
+}

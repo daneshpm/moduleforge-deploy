@@ -21,6 +21,7 @@ import { MeetingJoinPage } from './pages/MeetingJoinPage';
 import { IncomingCallModal } from './components/communication/IncomingCallModal';
 import { ActiveCallModal } from './components/communication/ActiveCallModal';
 import { MeetingRoomModal } from './components/communication/MeetingRoomModal';
+import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { UsernameSetupModal } from './components/UsernameSetupModal';
 import { CreateProjectModal } from './components/CreateProjectModal';
 import { useAuthStore } from './store/useAuthStore';
@@ -53,7 +54,7 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 export const App: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, checkAuth } = useAuthStore();
+  const { user, checkAuth, pendingVerificationEmail } = useAuthStore();
   const { createProject } = useProjectStore();
   const { updatePresence, pollActiveCalls } = useCommunicationStore();
 
@@ -140,6 +141,11 @@ export const App: React.FC = () => {
     location.pathname === '/join-team' ||
     location.pathname.startsWith('/invites/') ||
     location.pathname.startsWith('/invite/');
+
+  // ── Unverified email/password user: only the verify screen (no API calls, no request loop) ──
+  if (pendingVerificationEmail !== null) {
+    return <VerifyEmailPage />;
+  }
 
   // ── Dedicated meeting room join preview — protected, full screen ──────────
   if (isMeetRoute) {

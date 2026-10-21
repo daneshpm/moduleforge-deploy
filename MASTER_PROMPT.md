@@ -199,7 +199,9 @@ ProjectMember: id, projectId, email, role (owner/developer/viewer), status, invi
 
 Server (.env):
   DATABASE_URL              PostgreSQL connection string
-  NODE_ENV                  development | production
+  NODE_ENV                  development (explicit, enables dev-only routes/CORS) | production
+  ENFORCE_AUTH              true/false; defaults to ON when NODE_ENV=production (set false to opt out)
+  FIREBASE_PROJECT_ID       Firebase project id used to verify ID tokens
   ALLOWED_ORIGINS           comma-separated frontend origins (prod)
   GITHUB_TOKEN              GitHub PAT (repo scope)
   WEBHOOK_PUBLIC_URL        public HTTPS URL of server
