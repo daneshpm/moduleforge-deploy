@@ -1,0 +1,14 @@
+const test = require('node:test');
+const assert = require('node:assert');
+const { planDbStep } = require('./build-plan');
+const pg = 'postgresql://u:p@h/db';
+test('no url -> skip', () => assert.equal(planDbStep({}, true).action, 'skip'));
+test('pg default -> db-push', () => { const p = planDbStep({ DATABASE_URL: pg }, true); assert.equal(p.action, 'db-push'); assert.equal(p.schema, 'schema.prisma'); });
+test('pg + USE_MIGRATE + folder -> migrate-deploy', () => assert.equal(planDbStep({ DATABASE_URL: pg, USE_MIGRATE: 'true' }, true).action, 'migrate-deploy'));
+test('USE_MIGRATE case-insensitive true', () => assert.equal(planDbStep({ DATABASE_URL: pg, USE_MIGRATE: 'TRUE' }, true).action, 'migrate-deploy'));
+test('USE_MIGRATE other value -> db-push', () => assert.equal(planDbStep({ DATABASE_URL: pg, USE_MIGRATE: '1' }, true).action, 'db-push'));
+test('USE_MIGRATE without folder -> error', () => assert.equal(planDbStep({ DATABASE_URL: pg, USE_MIGRATE: 'true' }, false).action, 'error'));
+test('sqlite default -> db-push with sqlite schema', () => { const p = planDbStep({ DATABASE_URL: 'file:./dev.db' }, true); assert.equal(p.action, 'db-push'); assert.equal(p.schema, 'schema.sqlite.prisma'); });
+test('sqlite + USE_MIGRATE -> error', () => assert.equal(planDbStep({ DATABASE_URL: 'file:./x.db', USE_MIGRATE: 'true' }, true).action, 'error'));
+test('mysql -> error', () => assert.equal(planDbStep({ DATABASE_URL: 'mysql://a' }, true).action, 'error'));
+test('result never contains the url', () => assert.ok(!JSON.stringify(planDbStep({ DATABASE_URL: pg, USE_MIGRATE: 'true' }, true)).includes('u:p@h')));

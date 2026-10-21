@@ -9,7 +9,12 @@
     "start": "npm run start --prefix server",
     "db:push": "npm run prisma:push --prefix server",
     "db:generate": "npm run prisma:generate --prefix server",
-    "vercel-build": "node scripts/vercel-build.js"
+    "vercel-build": "node scripts/vercel-build.js",
+    "db:sqlite-schema": "node scripts/make-sqlite-schema.js",
+    "db:check-schema": "node scripts/check-schema-sync.js",
+    "db:new-migration": "node scripts/new-migration.js",
+    "db:diff-live": "node scripts/db-diff-live.js",
+    "test:scripts": "node --test scripts/build-plan.test.js"
   },
   "dependencies": {
     "@prisma/client": "^5.11.0",

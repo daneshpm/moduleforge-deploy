@@ -31,7 +31,7 @@ async function call(method: string, url: string, token: string) {
 }
 
 before(async () => {
-  execSync('npx prisma db push --skip-generate --accept-data-loss', { cwd: path.join(__dirname, '..', '..'), env: process.env, stdio: 'ignore' });
+  execSync('npx prisma db push --schema prisma/schema.sqlite.prisma --skip-generate --accept-data-loss', { cwd: path.join(__dirname, '..', '..'), env: process.env, stdio: 'ignore' });
   ({ prisma } = require('../prisma'));
   require('../middleware/auth').setTokenVerifier(async (t: string) => {
     const p = t.split(':');
