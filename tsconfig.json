@@ -9,5 +9,12 @@
     "resolveJsonModule": true,
     "outDir": ".vercel/output"
   },
-  "include": ["api/**/*", "server/src/**/*"]
+  "include": [
+    "api/**/*",
+    "server/src/**/*"
+  ],
+  "exclude": [
+    "server/src/__tests__/**",
+    "server/src/test_*.ts"
+  ]
 }
