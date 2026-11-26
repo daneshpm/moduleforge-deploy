@@ -18,6 +18,21 @@ export interface SendInviteParams {
   appUrl?: string;
 }
 
+export interface SendTaskParams {
+  to: string;
+  teamName: string;
+  taskTitle: string;
+  taskDescription?: string | null;
+  priority: string;
+  deadline?: Date | null;
+  assignedBy: string;
+  teamUrl: string;
+}
+
+function escHtml(v: string): string {
+  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export interface SendTeamInviteParams {
   to: string;
   teamName: string;
@@ -245,6 +260,31 @@ class EmailService {
     `;
 
     return this.deliverEmail(to, subject, plainBody, htmlContent, gmailComposeUrl, mailtoUrl, inviteLink);
+  }
+
+  public async sendTaskAssignment(params: SendTaskParams): Promise<SendInviteResult> {
+    const { to, teamName, taskTitle, taskDescription, priority, deadline, assignedBy, teamUrl } = params;
+    const deadlineText = deadline
+      ? deadline.toLocaleString('en-IN', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Asia/Kolkata' }) + ' IST'
+      : 'No deadline set';
+
+    const subject = `New task assigned: ${taskTitle} (${teamName})`;
+    const plainBody = `${assignedBy} assigned you a task in team "${teamName}".\n\nTask: ${taskTitle}\n${taskDescription ? `Details: ${taskDescription}\n` : ''}Priority: ${priority}\nDeadline: ${deadlineText}\n\nOpen the team: ${teamUrl}\n\nModuleForge`;
+    const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(plainBody)}`;
+    const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(plainBody)}`;
+
+    const htmlContent = `<!DOCTYPE html><html><body style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F7F8F7;margin:0;padding:24px 16px;color:#202524">
+      <div style="max-width:540px;margin:0 auto;background:#fff;border-radius:24px;border:1px solid #E2E6E4;padding:32px">
+        <div style="display:inline-block;background:#EAF3EF;color:#1F5E4B;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:4px 12px;border-radius:100px;margin-bottom:14px">New task</div>
+        <h1 style="font-size:22px;margin:0 0 8px">${escHtml(taskTitle)}</h1>
+        <p style="color:#6B7471;font-size:14px;margin:0 0 16px">${escHtml(assignedBy)} assigned this to you in <strong style="color:#202524">${escHtml(teamName)}</strong>.</p>
+        ${taskDescription ? `<p style="font-size:14px;white-space:pre-wrap">${escHtml(taskDescription)}</p>` : ''}
+        <table style="font-size:14px;margin:16px 0"><tr><td style="color:#6B7471;padding-right:14px">Priority</td><td style="text-transform:capitalize">${escHtml(priority)}</td></tr>
+        <tr><td style="color:#6B7471;padding-right:14px">Deadline</td><td style="color:#1F5E4B;font-weight:700">${escHtml(deadlineText)}</td></tr></table>
+        <a href="${escHtml(teamUrl)}" style="display:inline-block;background:#1F5E4B;color:#fff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:12px">Open team tasks</a>
+      </div></body></html>`;
+
+    return this.deliverEmail(to, subject, plainBody, htmlContent, gmailComposeUrl, mailtoUrl, teamUrl);
   }
 
   public async sendMeetingInvitation(params: SendMeetingInviteParams): Promise<SendInviteResult> {

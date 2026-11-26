@@ -31,6 +31,7 @@ model User {
   teamMemberships     TeamMember[]
   sentInvitations     TeamInvitation[] @relation("SentInvitations")
   receivedInvitations TeamInvitation[] @relation("ReceivedInvitations")
+  taskAssignments     TaskAssignee[]
   notifications       Notification[]
   channelsCreated     Channel[]        @relation("ChannelCreator")
   channelMessages     ChannelMessage[] @relation("UserChannelMessages")
@@ -62,6 +63,7 @@ model Team {
   notifications Notification[]
   channels    Channel[]
   meetings    Meeting[]
+  tasks       Task[]
 
   @@index([ownerId])
 }
@@ -77,6 +79,36 @@ model TeamMember {
 
   @@unique([teamId, userId])
   @@index([teamId])
+  @@index([userId])
+}
+
+model Task {
+  id          String         @id @default(uuid())
+  teamId      String
+  team        Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  priority    String         @default("medium") // "low" | "medium" | "high"
+  status      String         @default("todo")   // "todo" | "in_progress" | "done"
+  deadline    DateTime?
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  completedAt DateTime?
+  assignees   TaskAssignee[]
+
+  @@index([teamId])
+  @@index([deadline])
+}
+
+model TaskAssignee {
+  id     String @id @default(uuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
   @@index([userId])
 }
 

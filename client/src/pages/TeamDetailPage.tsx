@@ -8,6 +8,7 @@ import {
   Shield,
   User,
   Trash2,
+  ClipboardList,
   Settings,
   FolderGit2,
   Clock,
@@ -40,6 +41,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useCommunicationStore } from '../store/useCommunicationStore';
 import { InviteMemberModal } from '../components/InviteMemberModal';
 import { TeamIssuesTab } from '../components/teams/TeamIssuesTab';
+import { TeamTasksTab } from '../components/teams/TeamTasksTab';
 import { MeetingHistory } from '../components/team/MeetingHistory';
 import { MeetingInvite } from '../components/team/MeetingInvite';
 import { Channel, ChannelType } from '../types/communication';
@@ -65,7 +67,7 @@ export const TeamDetailPage: React.FC = () => {
     startDirectChat,
   } = useCommunicationStore();
 
-  const [activeTab, setActiveTab] = useState<'chat' | 'issues' | 'meetings' | 'members' | 'invitations' | 'projects' | 'settings'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'issues' | 'tasks' | 'meetings' | 'members' | 'invitations' | 'projects' | 'settings'>('chat');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
@@ -513,6 +515,18 @@ export const TeamDetailPage: React.FC = () => {
         </button>
 
         <button
+          onClick={() => setActiveTab('tasks')}
+          className={`pb-3 transition relative flex items-center gap-2 shrink-0 ${
+            activeTab === 'tasks'
+              ? 'text-[#1F5E4B] border-b-2 border-[#1F5E4B] font-bold'
+              : 'text-[#6B7471] hover:text-[#202524]'
+          }`}
+        >
+          <ClipboardList className="w-4 h-4" />
+          <span>Tasks</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('meetings')}
           className={`pb-3 transition relative flex items-center gap-2 shrink-0 ${
             activeTab === 'meetings'
@@ -845,6 +859,11 @@ export const TeamDetailPage: React.FC = () => {
       {/* TAB: ISSUES (GitHub-Style Ticketing & Task Tracking) */}
       {activeTab === 'issues' && (
         <TeamIssuesTab team={activeTeam} />
+      )}
+
+      {/* TAB: TASKS (assign work to members with a deadline) */}
+      {activeTab === 'tasks' && (
+        <TeamTasksTab team={activeTeam as any} currentUserId={user?.id} />
       )}
 
       {/* TAB 2: MEMBERS (with direct calling & messaging per user) */}
