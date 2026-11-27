@@ -891,3 +891,221 @@ teamsRouter.delete('/:teamId/issues/:issueId', async (req, res) => {
   }
 });
 
+
+// ============================================================================
+// TEAM TASKS (assign work to members with a deadline)
+// ============================================================================
+
+const TASK_PRIORITIES = ['low', 'medium', 'high'];
+const TASK_STATUSES = ['todo', 'in_progress', 'done'];
+
+const taskInclude = {
+  assignees: {
+    include: { user: { select: { id: true, name: true, username: true, avatarUrl: true } } },
+  },
+};
+
+function parseTaskDeadline(value: unknown): { ok: true; date: Date | null } | { ok: false } {
+  if (value === undefined || value === null || value === '') return { ok: true, date: null };
+  const d = new Date(value as string);
+  return isNaN(d.getTime()) ? { ok: false } : { ok: true, date: d };
+}
+
+// GET /api/teams/tasks/mine - every task assigned to the caller, across all their teams
+teamsRouter.get('/tasks/mine', async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+
+    const tasks = await (prisma as any).task.findMany({
+      where: { assignees: { some: { userId } } },
+      orderBy: [{ deadline: 'asc' }, { createdAt: 'desc' }],
+      include: { ...taskInclude, team: { select: { id: true, name: true } } },
+    });
+    res.json({ tasks });
+  } catch (error: any) {
+    console.error('Error fetching my tasks:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch tasks' });
+  }
+});
+
+// All task routes require team membership
+teamsRouter.use('/:teamId/tasks', async (req, res, next) => {
+  try {
+    const caller = await getCallerTeamRole(req.params.teamId, getUserId(req));
+    if (!caller) return res.status(404).json({ error: 'Team not found' });
+    (req as any).teamCaller = caller;
+    next();
+  } catch (e: any) {
+    res.status(500).json({ error: 'Failed to verify team access' });
+  }
+});
+
+// GET /api/teams/:teamId/tasks
+teamsRouter.get('/:teamId/tasks', async (req, res) => {
+  try {
+    const tasks = await (prisma as any).task.findMany({
+      where: { teamId: req.params.teamId },
+      orderBy: { createdAt: 'desc' },
+      include: taskInclude,
+    });
+    res.json({ tasks });
+  } catch (error: any) {
+    console.error('Error fetching team tasks:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch tasks' });
+  }
+});
+
+// POST /api/teams/:teamId/tasks - owners/admins assign a task (empty assigneeIds = whole team)
+teamsRouter.post('/:teamId/tasks', async (req, res) => {
+  try {
+    const { teamId } = req.params;
+    const caller = (req as any).teamCaller;
+    if (!caller.isAdmin) return res.status(403).json({ error: 'Only team owners and admins can assign tasks' });
+
+    const userId = getUserId(req)!;
+    const { title, description } = req.body;
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ error: 'Task title is required' });
+    }
+    const priority = TASK_PRIORITIES.includes(req.body.priority) ? req.body.priority : 'medium';
+    const dl = parseTaskDeadline(req.body.deadline);
+    if (!dl.ok) return res.status(400).json({ error: 'Deadline is not a valid date' });
+
+    const team = await (prisma as any).team.findUnique({
+      where: { id: teamId },
+      include: { members: { select: { userId: true } } },
+    });
+    if (!team) return res.status(404).json({ error: 'Team not found' });
+
+    const memberIds = new Set<string>([team.ownerId, ...team.members.map((m: any) => m.userId)]);
+    const requested: string[] = Array.isArray(req.body.assigneeIds)
+      ? Array.from(new Set<string>(req.body.assigneeIds.filter((v: unknown) => typeof v === 'string')))
+      : [];
+    const outsiders = requested.filter((id) => !memberIds.has(id));
+    if (outsiders.length) return res.status(400).json({ error: 'Some assignees are not members of this team' });
+    const assigneeIds = requested.length ? requested : Array.from(memberIds);
+
+    const task = await (prisma as any).task.create({
+      data: {
+        teamId,
+        title: title.trim(),
+        description: typeof description === 'string' ? description.trim() || null : null,
+        priority,
+        deadline: dl.date,
+        createdById: userId,
+        assignees: { create: assigneeIds.map((id) => ({ userId: id })) },
+      },
+      include: taskInclude,
+    });
+
+    // Notify everyone assigned except the person who assigned it: in-app + email (best effort).
+    const creator = await (prisma as any).user.findUnique({ where: { id: userId }, select: { name: true, username: true } });
+    const creatorName = creator?.name || (creator?.username ? `@${creator.username}` : 'A team admin');
+    const rawOrigin = req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : undefined);
+    const defaultBase = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://moduleforge-deploy-pearl.vercel.app' : 'http://localhost:5173');
+    const appUrl = String(rawOrigin || defaultBase).replace(':5000', ':5173').replace(/\/+$/, '');
+    const recipients = assigneeIds.filter((id) => id !== userId);
+    const deadlineLabel = dl.date ? ` (due ${dl.date.toLocaleDateString('en-IN')})` : '';
+
+    const recipientUsers = recipients.length
+      ? await (prisma as any).user.findMany({ where: { id: { in: recipients } }, select: { id: true, email: true } })
+      : [];
+    await Promise.all(
+      recipientUsers.map(async (u: any) => {
+        try {
+          await (prisma as any).notification.create({
+            data: {
+              userId: u.id,
+              type: 'task_assigned',
+              title: 'New task assigned',
+              message: `${creatorName} assigned you "${task.title}" in ${team.name}${deadlineLabel}`,
+              relatedTeamId: teamId,
+              read: false,
+            },
+          });
+          if (u.email) {
+            await emailService.sendTaskAssignment({
+              to: u.email,
+              teamName: team.name,
+              taskTitle: task.title,
+              taskDescription: task.description,
+              priority,
+              deadline: dl.date,
+              assignedBy: creatorName,
+              teamUrl: `${appUrl}/teams/${teamId}`,
+            });
+          }
+        } catch (e: any) {
+          console.error('Task notification failed for user', u.id, e?.message);
+        }
+      })
+    );
+
+    res.status(201).json({ success: true, task, notified: recipientUsers.length });
+  } catch (error: any) {
+    console.error('Error creating task:', error);
+    res.status(500).json({ error: error.message || 'Failed to create task' });
+  }
+});
+
+// PATCH /api/teams/:teamId/tasks/:taskId - admins edit anything; assignees may change status only
+teamsRouter.patch('/:teamId/tasks/:taskId', async (req, res) => {
+  try {
+    const { teamId, taskId } = req.params;
+    const caller = (req as any).teamCaller;
+    const userId = getUserId(req)!;
+
+    const existing = await (prisma as any).task.findFirst({
+      where: { id: taskId, teamId },
+      include: { assignees: true },
+    });
+    if (!existing) return res.status(404).json({ error: 'Task not found' });
+
+    const isAssignee = existing.assignees.some((a: any) => a.userId === userId);
+    if (!caller.isAdmin && !isAssignee) return res.status(403).json({ error: 'Not allowed to update this task' });
+
+    const data: any = {};
+    if (req.body.status !== undefined) {
+      if (!TASK_STATUSES.includes(req.body.status)) return res.status(400).json({ error: 'Invalid status' });
+      data.status = req.body.status;
+      data.completedAt = req.body.status === 'done' ? new Date() : null;
+    }
+    if (caller.isAdmin) {
+      if (req.body.priority !== undefined) {
+        if (!TASK_PRIORITIES.includes(req.body.priority)) return res.status(400).json({ error: 'Invalid priority' });
+        data.priority = req.body.priority;
+      }
+      if (typeof req.body.title === 'string' && req.body.title.trim()) data.title = req.body.title.trim();
+      if (typeof req.body.description === 'string') data.description = req.body.description.trim() || null;
+      if (req.body.deadline !== undefined) {
+        const dl = parseTaskDeadline(req.body.deadline);
+        if (!dl.ok) return res.status(400).json({ error: 'Deadline is not a valid date' });
+        data.deadline = dl.date;
+      }
+    }
+
+    const task = await (prisma as any).task.update({ where: { id: taskId }, data, include: taskInclude });
+    res.json({ success: true, task });
+  } catch (error: any) {
+    console.error('Error updating task:', error);
+    res.status(500).json({ error: error.message || 'Failed to update task' });
+  }
+});
+
+// DELETE /api/teams/:teamId/tasks/:taskId - owners/admins only
+teamsRouter.delete('/:teamId/tasks/:taskId', async (req, res) => {
+  try {
+    const { teamId, taskId } = req.params;
+    if (!(req as any).teamCaller.isAdmin) return res.status(403).json({ error: 'Only team owners and admins can delete tasks' });
+
+    const existing = await (prisma as any).task.findFirst({ where: { id: taskId, teamId } });
+    if (!existing) return res.status(404).json({ error: 'Task not found' });
+
+    await (prisma as any).task.delete({ where: { id: taskId } });
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting task:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete task' });
+  }
+});
